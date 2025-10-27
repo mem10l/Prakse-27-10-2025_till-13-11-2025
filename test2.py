@@ -72,7 +72,7 @@ class TaskApp:
         submit_button = tk.Button(
             self.root,
             text="Submit",
-            command=self.add_task,  # directly call the method
+            command=self.add_task, 
             activebackground="blue",
             activeforeground="white"
         )
@@ -88,7 +88,7 @@ class TaskApp:
         title = self.e1.get().strip()
         description = self.e2.get().strip()
 
-        self.cursor.execute("INSERT INTO tasks (title, description) VALUES (?, ?)", (title, description))
+        self.cursor.execute("INSERT INTO tasks (title, description) VALUES (?, ?)", (title, description, status, quantity))
         self.conn.commit()
             
         self.e1.delete(0, tk.END)
