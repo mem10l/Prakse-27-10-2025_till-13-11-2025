@@ -3,14 +3,16 @@ from tkinter import *
 from tkinter import ttk, messagebox
 import sqlite3
 
-def button_clicked():
+def submit():
     return addTask()
+def update():
+    return updateTask()
 
 class TaskApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Task Manager")
-        self.root.geometry("600x400")
+        self.root.geometry("700x400")
         
         # Initialize database
         self.init_database()
@@ -55,15 +57,24 @@ class TaskApp:
         self.e3.grid(row=2, column=1)
         self.e4.grid(row=3, column=1)
         # Treeview for displaying tasks
-        button = tk.Button(
+        submit_button = tk.Button(
             root,
-            text="Click Me",
-            command=button_clicked,         
-            activebackground="blue",         
-            activeforeground="white"         
+            text="Submit",
+            command=submit,
+            activebackground="blue",
+            activeforeground="white"
         )
-        button.grid(row=4, column=0, rowspan= 1, columnspan=2, pady=20)
-        
+        submit_button.grid(row=4, column=0, padx=10, pady=5, sticky="nsew")
+
+        update_button = tk.Button(
+            root,
+            text="Update",
+            command=update,
+            activebackground="blue",
+            activeforeground="white"
+        )
+        update_button.grid(row=4, column=1, padx=10, pady=5, sticky="nsew")
+
        
         # Button frame
         
@@ -79,7 +90,9 @@ class TaskApp:
         test = 0
 
     def update_task(self):
-        test = 0
+        global updateTask
+        def updateTask():
+            return 
 
     def delete_task(self):
         test = 0
