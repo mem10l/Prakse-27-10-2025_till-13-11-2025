@@ -87,12 +87,16 @@ class TaskApp:
     def add_task(self):
         title = self.e1.get().strip()
         description = self.e2.get().strip()
+        status = self.e3.get().strip()
+        quantity = self.e4.get().strip()
 
-        self.cursor.execute("INSERT INTO tasks (title, description) VALUES (?, ?)", (title, description, status, quantity))
+        self.cursor.execute("INSERT INTO tasks (title, description, status, quantity) VALUES (?, ?, ?, ?)", (title, description, status, quantity))
         self.conn.commit()
             
         self.e1.delete(0, tk.END)
         self.e2.delete(0, tk.END)
+        self.e3.delete(0, tk.END)
+        self.e4.delete(0, tk.END)
         self.load_tasks()
         messagebox.showinfo("Success", "Task added!")
         return
