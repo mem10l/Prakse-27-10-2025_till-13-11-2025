@@ -3,6 +3,9 @@ from tkinter import *
 from tkinter import ttk, messagebox
 import sqlite3
 
+def button_clicked():
+    return addTask()
+
 class TaskApp:
     def __init__(self, root):
         self.root = root
@@ -25,8 +28,8 @@ class TaskApp:
                 title TEXT NOT NULL,
                 description TEXT,
                 status TEXT DEFAULT 'pending',
-                quantity INTEGER DEFAULT 0,
-                inStock INTEGER DEFAULT 0 CHECK (inStock IN (0, 1))
+                quantity INTEGER,
+                inStock INTEGER
             )
         ''')
         self.conn.commit()
@@ -36,20 +39,38 @@ class TaskApp:
         # Labels
         self.label_title = tk.Label(self.root, text="Title")
         self.label_desc = tk.Label(self.root, text="Description")
+        self.label_status = tk.Label(self.root, text="status")
+        self.label_quantity = tk.Label(self.root, text="quantity")
         self.label_title.grid(row=0, column=0)
         self.label_desc.grid(row=1, column=0)
+        self.label_status.grid(row=2, column=0)
+        self.label_quantity.grid(row=3, column=0)
         # Entries
         self.e1 = tk.Entry(self.root)
         self.e2 = tk.Entry(self.root)
+        self.e3 = tk.Entry(self.root)
+        self.e4 = tk.Entry(self.root)
         self.e1.grid(row=0, column=1)
         self.e2.grid(row=1, column=1)
-        
+        self.e3.grid(row=2, column=1)
+        self.e4.grid(row=3, column=1)
         # Treeview for displaying tasks
+        button = tk.Button(
+            root,
+            text="Click Me",
+            command=button_clicked,         
+            activebackground="blue",         
+            activeforeground="white"         
+        )
+        button.grid(row=4, column=0, rowspan= 1, columnspan=2, pady=20)
+        
        
         # Button frame
-
+        
     def add_task(self):
-        test = 0
+        global addTask
+        def addTask():
+            return 
 
     def load_tasks(self):
         test = 0
