@@ -2,19 +2,13 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
 
-def submit():
-    return addTask()
-
-def update():
-    return updateTask()
-
 class TaskApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Task Manager")
         self.root.geometry("800x280")
         
-        # Initialize database
+        # Initialize the database
         self.init_database()
         
         # Create GUI
@@ -83,7 +77,7 @@ class TaskApp:
             activeforeground="white"
         )
         update_button = tk.Button(
-            self.root, text="Update", command=update,
+            self.root, text="Update", 
             activebackground="blue", activeforeground="white"
         )
         
@@ -110,9 +104,7 @@ class TaskApp:
         pass
 
     def update_task(self):
-        global updateTask
-        def updateTask():
-            return
+        pass
 
     def delete_task(self):
         pass
@@ -129,3 +121,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = TaskApp(root)
     root.mainloop()
+
