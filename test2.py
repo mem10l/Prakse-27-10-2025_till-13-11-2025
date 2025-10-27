@@ -54,8 +54,6 @@ class TaskApp:
         self.e3.grid(row=2, column=1, padx=5, pady=0, sticky="wen")
         self.e4.grid(row=3, column=1, padx=5, pady=0, sticky="wen")
         
-        self.root.grid_columnconfigure(1, weight=1)
-        
         #              --- 1.4 Treeview for displaying tasks ---
         columns = ("id", "title", "description", "status", "quantity", "inStock")
         self.tree = ttk.Treeview(self.root, columns=columns, show="headings", height=10)
@@ -65,8 +63,6 @@ class TaskApp:
             self.tree.column(col, width=100)
         
         self.tree.grid(row=0, column=2, rowspan=4, padx=10, pady=5, sticky="nsew")
-        self.root.grid_columnconfigure(2, weight=3)
-        self.root.grid_rowconfigure(4, weight=1)
         
         #                        --- 1.5 Button frame ---
         submit_button = tk.Button(
@@ -77,8 +73,11 @@ class TaskApp:
             activeforeground="white"
         )
         update_button = tk.Button(
-            self.root, text="Update", 
-            activebackground="blue", activeforeground="white"
+            self.root,
+            text="Update", 
+            command=self.update_task,
+            activebackground="blue", 
+            activeforeground="white"
         )
         
         submit_button.grid(row=4, column=0, columnspan=1, padx=5, pady=10, sticky="new")
@@ -102,7 +101,15 @@ class TaskApp:
         return
 
     def load_tasks(self):
-        pass
+        #           ---Clear--
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        #          ---Fetch all---
+        self.cursor.execute("SELECT * FROM tasks")
+        rows = self.cursor.fetchall()
+        #       ---Insert each row---
+        for row in rows:
+            self.tree.insert("", tk.END, values=row)
 
     def on_item_select(self, event):
         pass
