@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import *
 from tkinter import ttk, messagebox
 import sqlite3
 
@@ -16,19 +17,36 @@ class TaskApp:
         self.load_tasks()
     
     def init_database(self):
-        self.conn = sqlite3.connect('test.db')
+        self.conn = sqlite3.connect('tasks.db')
         self.cursor = self.conn.cursor()
-        self.cursor.execute()
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT,
+                status TEXT DEFAULT 'pending',
+                quantity INTEGER DEFAULT 0,
+                inStock INTEGER DEFAULT 0 CHECK (inStock IN (0, 1))
+            )
+        ''')
         self.conn.commit()
     
     def create_widgets(self):
-        test = 0
         # Input frame
-       
+        # Labels
+        self.label_title = tk.Label(self.root, text="Title")
+        self.label_desc = tk.Label(self.root, text="Description")
+        self.label_title.grid(row=0, column=0)
+        self.label_desc.grid(row=1, column=0)
+        # Entries
+        self.e1 = tk.Entry(self.root)
+        self.e2 = tk.Entry(self.root)
+        self.e1.grid(row=0, column=1)
+        self.e2.grid(row=1, column=1)
+        
         # Treeview for displaying tasks
        
         # Button frame
-        
 
     def add_task(self):
         test = 0
