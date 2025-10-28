@@ -108,6 +108,16 @@ class TaskApp:
         description = self.e2.get().strip()
         quantity = self.e4.get().strip()
 
+        fields = {'Title': title, 'Description': description, 'Quantity': quantity}
+        missing = [name for name, value in fields.items() if not value]
+        
+        if missing:
+            if len(missing) == 1:
+                messagebox.showwarning("Warning", f"{missing[0]} is required!")
+            else:
+                messagebox.showwarning("Warning", f"The following fields are required:\n• " + "\n• ".join(missing))
+            return
+
         self.cursor.execute("SELECT id FROM tasks ORDER BY id")
         existing_ids = [row[0] for row in self.cursor.fetchall()]
         
@@ -165,6 +175,16 @@ class TaskApp:
         title = self.e1.get().strip()
         description = self.e2.get().strip()
         quantity = self.e4.get().strip()
+
+        fields = {'Title': title, 'Description': description, 'Quantity': quantity}
+        missing = [name for name, value in fields.items() if not value]
+        
+        if missing:
+            if len(missing) == 1:
+                messagebox.showwarning("Warning", f"{missing[0]} is required!")
+            else:
+                messagebox.showwarning("Warning", f"The following fields are required:\n• " + "\n• ".join(missing))
+            return
 
         sql_update_query = """
             UPDATE tasks
