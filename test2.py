@@ -79,9 +79,18 @@ class TaskApp:
             activebackground="blue", 
             activeforeground="white"
         )
+
+        complete_button = tk.Button(
+            self.root,
+            text="Complete task", 
+            command=self.mark_complete,
+            activebackground="blue", 
+            activeforeground="white"
+        )
         
         submit_button.grid(row=4, column=0, columnspan=1, padx=5, pady=10, sticky="new")
         update_button.grid(row=4, column=1, columnspan=1, padx=5, pady=10, sticky="new")
+        complete_button.grid(row=4, column=2, columnspan=1, padx=5, pady=10, sticky="w")
     def add_task(self):
         title = self.e1.get().strip()
         description = self.e2.get().strip()
@@ -131,10 +140,6 @@ class TaskApp:
         
 
     def update_task(self):
-        if not hasattr(self, 'selected_id'):
-            messagebox.showwarning("Warning", "No task selected!")
-            return
-
         task_id = self.selected_id
 
         title = self.e1.get().strip()
@@ -160,7 +165,22 @@ class TaskApp:
         pass
 
     def mark_complete(self):
-        pass
+        task_id = self.selected_id
+
+        status = "complete"
+
+        sql_update_query = """
+            UPDATE tasks
+            SET status = ?
+            WHERE id = ?
+        """
+        self.cursor.execute(sql_update_query, (status, task_id))
+        self.conn.commit()
+
+        self.load_tasks()
+        messagebox.showinfo("Success", "Task completed successfully!")
+
+        del self.selected_id
 
     def __del__(self):
         if hasattr(self, 'conn'):
