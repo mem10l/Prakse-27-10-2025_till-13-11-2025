@@ -7,7 +7,7 @@ class TaskApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Task Manager")
-        self.root.geometry("840x280")
+        self.root.geometry("840x300")
         
         # Initialize the database
         self.init_database()
@@ -16,7 +16,7 @@ class TaskApp:
         self.create_widgets()
         self.load_tasks()
     def init_database(self):
-        db_folder = '../Database'
+        db_folder = './Database'
         os.makedirs(db_folder, exist_ok=True)
         
         self.conn = sqlite3.connect('./Database/tasks.db')
@@ -59,7 +59,7 @@ class TaskApp:
         
         #              --- Treeview for displaying tasks ---
         columns = ("id", "title", "description", "status", "quantity", "inStock")
-        self.tree = ttk.Treeview(self.root, columns=columns, selectmode=tk.EXTENDED, show="headings", height=10)
+        self.tree = ttk.Treeview(self.root, columns=columns, selectmode=tk.EXTENDED, show="headings", height=11)
         
         for col in columns:
             self.tree.heading(col, text=col.capitalize())
@@ -183,7 +183,7 @@ class TaskApp:
         self.conn.commit()
 
         self.load_tasks()
-        messagebox.showinfo("Success", "Task completed successfully!")
+        messagebox.showinfo("Success", "Task deleted successfully!")
 
         del self.selected_id
 
@@ -191,7 +191,7 @@ class TaskApp:
     def mark_complete(self):
         task_id = self.selected_id
 
-        status = "complete"
+        status = "completed"
 
         sql_update_query = """
             UPDATE tasks
