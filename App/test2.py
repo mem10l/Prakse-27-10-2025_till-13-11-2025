@@ -7,7 +7,7 @@ class TaskApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Task Manager")
-        self.root.geometry("840x300")
+        self.root.geometry("750x300")
         
         # Initialize the database
         self.init_database()
@@ -38,49 +38,48 @@ class TaskApp:
         #                    --- Labels ---
         self.label_title = tk.Label(self.root, text="Title")
         self.label_desc = tk.Label(self.root, text="Description")
-        self.label_status = tk.Label(self.root, text="Status")
         self.label_quantity = tk.Label(self.root, text="Quantity")
         
-        self.label_title.grid(row=0, column=0, padx=5, pady=5, sticky="n")
-        self.label_desc.grid(row=1, column=0, padx=5, pady=5, sticky="n")
-        self.label_status.grid(row=2, column=0, padx=5, pady=5, sticky="n")
-        self.label_quantity.grid(row=3, column=0, padx=5, pady=5, sticky="n")
+        self.label_title.grid(row=0, column=0, padx=5, pady=(5, 0), sticky="w")
+        self.label_desc.grid(row=1, column=0, padx=5, pady=(5, 0), sticky="w")
+        self.label_quantity.grid(row=2, column=0, padx=5, pady=(5, 0), sticky="w")
         
         #                     --- Entries ---
-        self.e1 = tk.Entry(self.root)
-        self.e2 = tk.Entry(self.root)
-        self.e3 = tk.Entry(self.root)
-        self.e4 = tk.Entry(self.root)
+        self.e1 = tk.Entry(self.root, width=20)
+        self.e2 = tk.Entry(self.root, width=20)
+        self.e4 = tk.Entry(self.root, width=20)
         
-        self.e1.grid(row=0, column=1, padx=5, pady=0, sticky="wen")
-        self.e2.grid(row=1, column=1, padx=5, pady=0, sticky="wen")
-        self.e3.grid(row=2, column=1, padx=5, pady=0, sticky="wen")
-        self.e4.grid(row=3, column=1, padx=5, pady=0, sticky="wen")
+        self.e1.grid(row=0, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
+        self.e2.grid(row=1, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
+        self.e4.grid(row=2, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
         
         #              --- Treeview for displaying tasks ---
-        columns = ("id", "title", "description", "status", "quantity", "inStock")
+        columns = ("id", "title", "description", "quantity", "inStock")
         self.tree = ttk.Treeview(self.root, columns=columns, selectmode=tk.EXTENDED, show="headings", height=11)
         
         for col in columns:
             self.tree.heading(col, text=col.capitalize())
             self.tree.column(col, width=100)
         
-        self.tree.grid(row=0, column=2, rowspan=4, padx=10, pady=5, sticky="nsew")
+        self.tree.grid(row=0, column=2, rowspan=5, padx=10, pady=5, sticky="nsew")
         self.tree.bind('<ButtonRelease-1>', self.on_item_select)
+
         #                        --- Button frame ---
         submitTask_button = tk.Button(
             self.root,
             text="Submit",
             command=self.add_task, 
             activebackground="blue",
-            activeforeground="white"
+            activeforeground="white",
+            width=10
         )
         updateTask_button = tk.Button(
             self.root,
             text="Update", 
             command=self.update_task,
             activebackground="blue", 
-            activeforeground="white"
+            activeforeground="white",
+            width=10
         )
 
         completeTask_button = tk.Button(
@@ -95,25 +94,37 @@ class TaskApp:
             text="Delete task", 
             command=self.delete_task,
             activebackground="blue", 
-            activeforeground="white"
+            activeforeground="white",
+            width=15
         )
         
-        submitTask_button.grid(row=4, column=0, columnspan=1, padx=5, pady=10, sticky="new")
-        updateTask_button.grid(row=4, column=1, columnspan=1, padx=5, pady=10, sticky="new")
-        completeTask_button.grid(row=4, column=2, columnspan=1, padx=5, pady=10, sticky="w")
-        deleteTask_button.grid(row=4, column=2, columnspan=1, padx=5, pady=10, sticky="ne")
+        submitTask_button.grid(row=3, column=0, padx=5, pady=(10, 5), sticky="ew")
+        updateTask_button.grid(row=3, column=1, padx=(0, 5), pady=(10, 5), sticky="ew")
+        completeTask_button.grid(row=4, column=0, padx=5, pady=5, sticky="ew")
+        deleteTask_button.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+
     def add_task(self):
         title = self.e1.get().strip()
         description = self.e2.get().strip()
-        status = self.e3.get().strip()
         quantity = self.e4.get().strip()
 
-        self.cursor.execute("INSERT INTO tasks (title, description, status, quantity) VALUES (?, ?, ?, ?)", (title, description, status, quantity))
+        self.cursor.execute("SELECT id FROM tasks ORDER BY id")
+        existing_ids = [row[0] for row in self.cursor.fetchall()]
+        
+        next_id = 1
+        for existing_id in existing_ids:
+            if next_id < existing_id:
+                break
+            next_id = existing_id + 1
+        
+        self.cursor.execute(
+            "INSERT INTO tasks (id, title, description, quantity) VALUES (?, ?, ?, ?)", 
+            (next_id, title, description, quantity)
+        )
         self.conn.commit()
             
         self.e1.delete(0, tk.END)
         self.e2.delete(0, tk.END)
-        self.e3.delete(0, tk.END)
         self.e4.delete(0, tk.END)
         self.load_tasks()
         messagebox.showinfo("Success", "Task added!")
@@ -142,8 +153,6 @@ class TaskApp:
         self.e1.insert(0, values[1]) 
         self.e2.delete(0, tk.END)
         self.e2.insert(0, values[2])  
-        self.e3.delete(0, tk.END)
-        self.e3.insert(0, values[3])
         self.e4.delete(0, tk.END)
         self.e4.insert(0, values[4])
         
@@ -155,15 +164,14 @@ class TaskApp:
 
         title = self.e1.get().strip()
         description = self.e2.get().strip()
-        status = self.e3.get().strip()
         quantity = self.e4.get().strip()
 
         sql_update_query = """
             UPDATE tasks
-            SET title = ?, description = ?, status = ?, quantity = ?
+            SET title = ?, description = ?, quantity = ?
             WHERE id = ?
         """
-        self.cursor.execute(sql_update_query, (title, description, status, quantity, task_id))
+        self.cursor.execute(sql_update_query, (title, description, quantity, task_id))
         self.conn.commit()
 
         self.load_tasks()
