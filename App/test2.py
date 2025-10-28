@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
+import os
 
 class TaskApp:
     def __init__(self, root):
@@ -14,9 +15,11 @@ class TaskApp:
         # Create GUI
         self.create_widgets()
         self.load_tasks()
-    
     def init_database(self):
-        self.conn = sqlite3.connect('tasks.db')
+        db_folder = '../Database'
+        os.makedirs(db_folder, exist_ok=True)
+        
+        self.conn = sqlite3.connect('./Database/tasks.db')
         self.cursor = self.conn.cursor()
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS tasks (
