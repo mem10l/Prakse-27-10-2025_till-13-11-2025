@@ -65,14 +65,14 @@ class TaskApp:
         self.tree.grid(row=0, column=2, rowspan=4, padx=10, pady=5, sticky="nsew")
         self.tree.bind('<ButtonRelease-1>', self.on_item_select)
         #                        --- Button frame ---
-        submit_button = tk.Button(
+        submitTask_button = tk.Button(
             self.root,
             text="Submit",
             command=self.add_task, 
             activebackground="blue",
             activeforeground="white"
         )
-        update_button = tk.Button(
+        updateTask_button = tk.Button(
             self.root,
             text="Update", 
             command=self.update_task,
@@ -80,17 +80,25 @@ class TaskApp:
             activeforeground="white"
         )
 
-        complete_button = tk.Button(
+        completeTask_button = tk.Button(
             self.root,
             text="Complete task", 
             command=self.mark_complete,
             activebackground="blue", 
             activeforeground="white"
         )
+        deleteTask_button = tk.Button(
+            self.root,
+            text="Delete task", 
+            command=self.delete_task,
+            activebackground="blue", 
+            activeforeground="white"
+        )
         
-        submit_button.grid(row=4, column=0, columnspan=1, padx=5, pady=10, sticky="new")
-        update_button.grid(row=4, column=1, columnspan=1, padx=5, pady=10, sticky="new")
-        complete_button.grid(row=4, column=2, columnspan=1, padx=5, pady=10, sticky="w")
+        submitTask_button.grid(row=4, column=0, columnspan=1, padx=5, pady=10, sticky="new")
+        updateTask_button.grid(row=4, column=1, columnspan=1, padx=5, pady=10, sticky="new")
+        completeTask_button.grid(row=4, column=2, columnspan=1, padx=5, pady=10, sticky="w")
+        deleteTask_button.grid(row=4, column=2, columnspan=1, padx=5, pady=10, sticky="ne")
     def add_task(self):
         title = self.e1.get().strip()
         description = self.e2.get().strip()
@@ -162,7 +170,20 @@ class TaskApp:
 
 
     def delete_task(self):
-        pass
+        task_id = self.selected_id
+
+        sql_update_query = """
+            DELETE FROM tasks
+            WHERE id = ?
+        """
+        self.cursor.execute(sql_update_query, (task_id,))
+        self.conn.commit()
+
+        self.load_tasks()
+        messagebox.showinfo("Success", "Task completed successfully!")
+
+        del self.selected_id
+
 
     def mark_complete(self):
         task_id = self.selected_id
