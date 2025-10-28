@@ -6,7 +6,7 @@ class TaskApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Task Manager")
-        self.root.geometry("800x280")
+        self.root.geometry("840x280")
         
         # Initialize the database
         self.init_database()
@@ -31,8 +31,8 @@ class TaskApp:
         self.conn.commit()
     
     def create_widgets(self):
-        #                   --- 1 Input frame ---
-        #                    --- 1.2 Labels ---
+        #                   --- Input frame ---
+        #                    --- Labels ---
         self.label_title = tk.Label(self.root, text="Title")
         self.label_desc = tk.Label(self.root, text="Description")
         self.label_status = tk.Label(self.root, text="Status")
@@ -43,7 +43,7 @@ class TaskApp:
         self.label_status.grid(row=2, column=0, padx=5, pady=5, sticky="n")
         self.label_quantity.grid(row=3, column=0, padx=5, pady=5, sticky="n")
         
-        #                     --- 1.3 Entries ---
+        #                     --- Entries ---
         self.e1 = tk.Entry(self.root)
         self.e2 = tk.Entry(self.root)
         self.e3 = tk.Entry(self.root)
@@ -54,17 +54,17 @@ class TaskApp:
         self.e3.grid(row=2, column=1, padx=5, pady=0, sticky="wen")
         self.e4.grid(row=3, column=1, padx=5, pady=0, sticky="wen")
         
-        #              --- 1.4 Treeview for displaying tasks ---
+        #              --- Treeview for displaying tasks ---
         columns = ("id", "title", "description", "status", "quantity", "inStock")
-        self.tree = ttk.Treeview(self.root, columns=columns, show="headings", height=10)
+        self.tree = ttk.Treeview(self.root, columns=columns, selectmode=tk.EXTENDED, show="headings", height=10)
         
         for col in columns:
             self.tree.heading(col, text=col.capitalize())
             self.tree.column(col, width=100)
         
         self.tree.grid(row=0, column=2, rowspan=4, padx=10, pady=5, sticky="nsew")
-        
-        #                        --- 1.5 Button frame ---
+        self.tree.bind('<ButtonRelease-1>', self.on_item_select)
+        #                        --- Button frame ---
         submit_button = tk.Button(
             self.root,
             text="Submit",
@@ -82,7 +82,6 @@ class TaskApp:
         
         submit_button.grid(row=4, column=0, columnspan=1, padx=5, pady=10, sticky="new")
         update_button.grid(row=4, column=1, columnspan=1, padx=5, pady=10, sticky="new")
-    
     def add_task(self):
         title = self.e1.get().strip()
         description = self.e2.get().strip()
@@ -112,10 +111,50 @@ class TaskApp:
             self.tree.insert("", tk.END, values=row)
 
     def on_item_select(self, event):
-        pass
+        item_id = self.tree.focus()
+        item = self.tree.item(item_id)
+        values = item['values']
+        
+        if not values:
+            return
+        
+        self.e1.delete(0, tk.END)
+        self.e1.insert(0, values[1]) 
+        self.e2.delete(0, tk.END)
+        self.e2.insert(0, values[2])  
+        self.e3.delete(0, tk.END)
+        self.e3.insert(0, values[3])
+        self.e4.delete(0, tk.END)
+        self.e4.insert(0, values[4])
+        
+        self.selected_id = values[0]  
+        
 
     def update_task(self):
-        pass
+        if not hasattr(self, 'selected_id'):
+            messagebox.showwarning("Warning", "No task selected!")
+            return
+
+        task_id = self.selected_id
+
+        title = self.e1.get().strip()
+        description = self.e2.get().strip()
+        status = self.e3.get().strip()
+        quantity = self.e4.get().strip()
+
+        sql_update_query = """
+            UPDATE tasks
+            SET title = ?, description = ?, status = ?, quantity = ?
+            WHERE id = ?
+        """
+        self.cursor.execute(sql_update_query, (title, description, status, quantity, task_id))
+        self.conn.commit()
+
+        self.load_tasks()
+        messagebox.showinfo("Success", "Task updated successfully!")
+
+        del self.selected_id
+
 
     def delete_task(self):
         pass
