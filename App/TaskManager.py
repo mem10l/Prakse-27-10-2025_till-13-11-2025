@@ -3,6 +3,25 @@ from tkinter import ttk, messagebox
 import sqlite3
 import os
 
+class RegisterApp:
+    pass
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Task Manager")
+        self.root.geometry("900x300")
+        
+        # Initialize the database
+        self.init_database()
+        
+        # Create GUI
+        self.create_widgets()
+        self.load_tasks()
+    def init_database(self):
+        db_folder = './Database'
+        os.makedirs(db_folder, exist_ok=True)
+        
+        self.conn = sqlite3.connect('./Database/tasks.db')
+        self.cursor = self.conn.cursor()
 class TaskApp:
     def __init__(self, root):
         self.root = root
@@ -184,7 +203,6 @@ class TaskApp:
         
         self.selected_id = values[0]  
         
-
     def update_task(self):
         task_id = self.selected_id
 
@@ -215,7 +233,6 @@ class TaskApp:
 
         del self.selected_id
 
-
     def delete_task(self):
         task_id = self.selected_id
 
@@ -230,7 +247,6 @@ class TaskApp:
         messagebox.showinfo("Success", "Task deleted successfully!")
 
         del self.selected_id
-
 
     def mark_complete(self):
         task_id = self.selected_id
@@ -300,9 +316,6 @@ class TaskApp:
 
         for row in rows:
             self.tree.insert("", "end", values=row)
-
-
-# values=["by id", "by title","by status",  "by description", "by quantity", "by stock"]
 
 if __name__ == "__main__":
     root = tk.Tk()
