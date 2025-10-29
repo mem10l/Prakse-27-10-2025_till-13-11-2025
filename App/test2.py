@@ -7,7 +7,7 @@ class TaskApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Task Manager")
-        self.root.geometry("750x300")
+        self.root.geometry("900x300")
         
         # Initialize the database
         self.init_database()
@@ -47,14 +47,16 @@ class TaskApp:
         #                     --- Entries ---
         self.e1 = tk.Entry(self.root, width=20)
         self.e2 = tk.Entry(self.root, width=20)
+        self.e3 = tk.Entry(self.root, width=20)
         self.e4 = tk.Entry(self.root, width=20)
         
         self.e1.grid(row=0, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
         self.e2.grid(row=1, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
+        self.e3.grid(row=5, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
         self.e4.grid(row=2, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
         
         #              --- Treeview for displaying tasks ---
-        columns = ("id", "title", "description", "quantity", "inStock")
+        columns = ("id", "title", "description", "status", "quantity", "inStock")
         self.tree = ttk.Treeview(self.root, columns=columns, selectmode=tk.EXTENDED, show="headings", height=11)
         
         for col in columns:
@@ -97,11 +99,25 @@ class TaskApp:
             activeforeground="white",
             width=15
         )
+        searchForTask_button = tk.Button(
+            self.root,
+            text="Search", 
+            command=self.search_for_tasks,
+            activebackground="blue", 
+            activeforeground="white",
+            width=15
+        )
         
         submitTask_button.grid(row=3, column=0, padx=5, pady=(10, 5), sticky="ew")
         updateTask_button.grid(row=3, column=1, padx=(0, 5), pady=(10, 5), sticky="ew")
         completeTask_button.grid(row=4, column=0, padx=5, pady=5, sticky="ew")
         deleteTask_button.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
+        searchForTask_button.grid(row=5, column=0, padx=5, pady=5, sticky="ew")
+
+        #               --- combobox ---
+        self.query = ttk.Combobox(root, values=["by id", "by title","by status",  "by description", "by quantity", "by stock", "All"])
+        self.query.set("Select a search query")  
+        self.query.grid(row=5, column=2, padx=5, pady=5, sticky="w")
 
     def add_task(self):
         title = self.e1.get().strip()
@@ -234,13 +250,61 @@ class TaskApp:
 
         del self.selected_id
 
-    def __del__(self):
-        if hasattr(self, 'conn'):
-            self.conn.close()
+    def search_for_tasks(self):
+        value = self.e3.get().strip()
+        query_type = self.query.get().strip()
+        if query_type == "by id":
+            sql_search_query = """
+                select * from tasks
+                WHERE id = ?
+            """
+        elif query_type == "by title":
+            sql_search_query = """
+                select * from tasks
+                WHERE title LIKE ?
+            """
+        elif query_type == "by status":
+            sql_search_query = """
+                select * from tasks
+                WHERE status LIKE ?
+            """
+            value = (value,) 
+        elif query_type == "by description":
+            sql_search_query = """
+                select * from tasks
+                WHERE description LIKE ?
+            """
+            value = ('%' + value + '%',)
+        elif query_type == "by quantity":
+            sql_search_query = """
+                select * from tasks
+                WHERE quantity = ?
+            """
+        elif query_type == "by stock":
+            sql_search_query = """
+                select * from tasks
+                WHERE inStock = ?
+            """
+        elif query_type == "All":
+            sql_search_query = "SELECT * FROM tasks"
+            value = ()
+            
+        rows = self.cursor.fetchall()
 
+        self.cursor.execute(sql_search_query, value)
+        
+        rows = self.cursor.fetchall()
+
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        for row in rows:
+            self.tree.insert("", "end", values=row)
+
+
+# values=["by id", "by title","by status",  "by description", "by quantity", "by stock"]
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = TaskApp(root)
     root.mainloop()
-
