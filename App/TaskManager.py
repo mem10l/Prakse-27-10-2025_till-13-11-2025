@@ -2,12 +2,16 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
 import os
+import barcode as b
+from barcode import EAN13 
+from barcode.writer import ImageWriter 
+import random
 
 class TaskApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Task Manager")
-        self.root.geometry("900x300")
+        self.root.geometry("1000x380")
         
         # Initialize the database
         self.init_database()
@@ -22,38 +26,68 @@ class TaskApp:
         self.conn = sqlite3.connect('./Database/tasks.db')
         self.cursor = self.conn.cursor()
         self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                description TEXT,
-                status TEXT DEFAULT 'pending',
-                quantity INTEGER,
-                inStock INTEGER
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT DEFAULT 'pending',
+            quantity INTEGER,
+            inStock INTEGER,
+            price INTEGER,
+            PVN INTEGER
+        )
+    ''')
+
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS barcode (
+                task_id INTEGER,
+                barcode TEXT,
+                FOREIGN KEY(task_id) REFERENCES tasks(id)
             )
         ''')
+
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS price (
+                task_id INTEGER,
+                price DECIMAL(10, 2),
+                currency CHAR(3) DEFAULT 'EUR',
+                PVN integer,
+                FOREIGN KEY(task_id) REFERENCES tasks(id)
+            )
+        ''')
+
+
         self.conn.commit()
-    
+
     def create_widgets(self):
         #                   --- Input frame ---
         #                    --- Labels ---
         self.label_title = tk.Label(self.root, text="Title")
         self.label_desc = tk.Label(self.root, text="Description")
         self.label_quantity = tk.Label(self.root, text="Quantity")
+        self.label_price = tk.Label(self.root, text="Price")
+        self.label_PVN = tk.Label(self.root, text="PVN")
         
         self.label_title.grid(row=0, column=0, padx=5, pady=(5, 0), sticky="w")
         self.label_desc.grid(row=1, column=0, padx=5, pady=(5, 0), sticky="w")
         self.label_quantity.grid(row=2, column=0, padx=5, pady=(5, 0), sticky="w")
+        self.label_price.grid(row=3, column=0, padx=5, pady=(5, 0), sticky="w")
+        self.label_PVN.grid(row=4, column=0, padx=5, pady=(5, 0), sticky="w")
         
         #                     --- Entries ---
         self.e1 = tk.Entry(self.root, width=20)
         self.e2 = tk.Entry(self.root, width=20)
         self.e3 = tk.Entry(self.root, width=20)
         self.e4 = tk.Entry(self.root, width=20)
+        self.e5 = tk.Entry(self.root, width=20)
+        self.e6 = tk.Entry(self.root, width=20)
         
         self.e1.grid(row=0, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
         self.e2.grid(row=1, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
-        self.e3.grid(row=5, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
+        self.e3.grid(row=8, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
         self.e4.grid(row=2, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
+        self.e5.grid(row=3, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
+        self.e6.grid(row=4, column=1, padx=(0, 5), pady=(5, 0), sticky="w")
         
         #              --- Treeview for displaying tasks ---
         columns = ("id", "title", "description", "status", "quantity", "inStock")
@@ -108,23 +142,26 @@ class TaskApp:
             width=15
         )
         
-        submitTask_button.grid(row=3, column=0, padx=5, pady=(10, 5), sticky="ew")
-        updateTask_button.grid(row=3, column=1, padx=(0, 5), pady=(10, 5), sticky="ew")
-        completeTask_button.grid(row=4, column=0, padx=5, pady=5, sticky="ew")
-        deleteTask_button.grid(row=4, column=1, padx=5, pady=5, sticky="ew")
-        searchForTask_button.grid(row=5, column=0, padx=5, pady=5, sticky="ew")
+        submitTask_button.grid(row=6, column=0, padx=5, pady=(10, 5), sticky="ew")
+        updateTask_button.grid(row=6, column=1, padx=(0, 5), pady=(10, 5), sticky="ew")
+        completeTask_button.grid(row=7, column=0, padx=5, pady=5, sticky="ew")
+        deleteTask_button.grid(row=7, column=1, padx=5, pady=5, sticky="ew")
+        searchForTask_button.grid(row=8, column=0, padx=5, pady=5, sticky="ew")
 
         #               --- combobox ---
         self.query = ttk.Combobox(root, values=["by id", "by title","by status",  "by description", "by quantity", "by stock", "All"])
         self.query.set("Select a search query")  
-        self.query.grid(row=5, column=2, padx=5, pady=5, sticky="w")
+        self.query.grid(row=8, column=2, padx=5, pady=5, sticky="w")
 
     def add_task(self):
         title = self.e1.get().strip()
         description = self.e2.get().strip()
         quantity = self.e4.get().strip()
+        price = self.e5.get().strip()
+        Pvn = int(self.e6.get().strip())
+        
 
-        fields = {'Title': title, 'Description': description, 'Quantity': quantity}
+        fields = {'Title': title, 'Description': description, 'Quantity': quantity, 'Price': price, 'PVN': Pvn}
         missing = [name for name, value in fields.items() if not value]
         
         if missing:
@@ -147,6 +184,19 @@ class TaskApp:
             "INSERT INTO tasks (id, title, description, quantity) VALUES (?, ?, ?, ?)", 
             (next_id, title, description, quantity)
         )
+
+        self.cursor.execute(
+            "INSERT INTO price (task_id, price, PVN) VALUES (?, ?, ?)", 
+            (next_id, price, Pvn)
+        )
+
+        barcode = random.randint(0, 9999999999999)
+        barcode_str = f"{barcode:013}"
+
+        self.cursor.execute(
+            "INSERT INTO barcode (task_id, barcode) VALUES (?, ?)", 
+            (next_id, barcode_str)
+        )
         self.conn.commit()
             
         self.e1.delete(0, tk.END)
@@ -155,7 +205,7 @@ class TaskApp:
         self.load_tasks()
         messagebox.showinfo("Success", "Task added!")
         return
-
+    
     def load_tasks(self):
         #           ---Clear--
         for row in self.tree.get_children():
@@ -181,6 +231,10 @@ class TaskApp:
         self.e2.insert(0, values[2])  
         self.e4.delete(0, tk.END)
         self.e4.insert(0, values[4])
+        self.e5.delete(0, tk.END)
+        self.e5.insert(0, values[6])
+        self.e6.delete(0, tk.END)
+        self.e6.insert(0, values[7])
         
         self.selected_id = values[0]  
         
@@ -260,6 +314,7 @@ class TaskApp:
                 select * from tasks
                 WHERE title LIKE ?
             """
+            value = ('%' + value + '%',)
         elif query_type == "by status":
             sql_search_query = """
                 select * from tasks
