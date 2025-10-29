@@ -3,25 +3,6 @@ from tkinter import ttk, messagebox
 import sqlite3
 import os
 
-class RegisterApp:
-    pass
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Task Manager")
-        self.root.geometry("900x300")
-        
-        # Initialize the database
-        self.init_database()
-        
-        # Create GUI
-        self.create_widgets()
-        self.load_tasks()
-    def init_database(self):
-        db_folder = './Database'
-        os.makedirs(db_folder, exist_ok=True)
-        
-        self.conn = sqlite3.connect('./Database/tasks.db')
-        self.cursor = self.conn.cursor()
 class TaskApp:
     def __init__(self, root):
         self.root = root
