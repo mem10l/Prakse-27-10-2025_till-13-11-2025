@@ -42,7 +42,7 @@ class TaskApp:
             CREATE TABLE IF NOT EXISTS barcode (
                 task_id INTEGER,
                 barcode TEXT,
-                is_primary BOOLEAN NOT NULL CHECK (is_primary IN (0, 1)),
+                is_primary BOOLEAN,
                 FOREIGN KEY(task_id) REFERENCES tasks(id)
             )
         ''')
