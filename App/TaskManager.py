@@ -70,46 +70,69 @@ class TaskApp:
 
     def create_widgets(self):
         #                   --- Input frame ---
-        #                    --- Labels ---
-        self.label_title = tk.Label(self.root, text="Title")
-        self.label_desc = tk.Label(self.root, text="Description")
-        self.label_quantity = tk.Label(self.root, text="Quantity")
-        self.label_price = tk.Label(self.root, text="Price")
-        self.label_PVN = tk.Label(self.root, text="PVN")
+        input_frame = tk.LabelFrame(self.root, text=" Task Input ", padx=10, pady=10)
+        input_frame.grid(row=0, column=0, padx=10, pady=10, sticky="n")
+
+        search_frame = tk.LabelFrame(self.root, text=" Search ", padx=10, pady=5)
+        search_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="ew")
+
+        search_frame = tk.LabelFrame(self.root, text=" Search ", padx=10, pady=5)
+        search_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="ew")
         
-        self.label_title.grid(row=0, column=0, padx=5, pady=(5, 0), sticky="w")
-        self.label_desc.grid(row=1, column=0, padx=5, pady=(5, 0), sticky="w")
-        self.label_quantity.grid(row=2, column=0, padx=5, pady=(5, 0), sticky="w")
-        self.label_price.grid(row=3, column=0, padx=5, pady=(5, 0), sticky="w")
-        self.label_PVN.grid(row=4, column=0, padx=5, pady=(5, 0), sticky="w")
+        tk.Label(search_frame, text="Search by:").grid(row=0, column=0, padx=5, pady=5)
+        
+        self.query = ttk.Combobox(search_frame, values=["by id", "by title", "by status", "by description", "by quantity", "by stock", "All"])
+        self.query.set("Select a search query")
+        self.query.grid(row=0, column=1, padx=5, pady=5)
+
+        tk.Label(search_frame, text="Search term:").grid(row=0, column=2, padx=5, pady=5)
+        
+        self.searchQuery = tk.Entry(search_frame, width=20)
+        self.searchQuery.grid(row=0, column=3, padx=5, pady=5)
+        
+        
+        #                    --- Labels ---
+        tk.Label(input_frame, text="FullName").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        tk.Label(input_frame, text="ItemGroup").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        tk.Label(input_frame, text="InStock").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        tk.Label(input_frame, text="ItemSuplier").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        tk.Label(input_frame, text="PVN").grid(row=4, column=0, padx=5, pady=5, sticky="w")
+        tk.Label(input_frame, text="Price").grid(row=5, column=0, padx=5, pady=5, sticky="w")
 
         #                        --- Entries ---
-        self.fullName = tk.Entry(self.root, width=20)
-        self.itemGroup = tk.Entry(self.root, width=20)
-        self.inStock = tk.Entry(self.root, width=20)
-        self.itemSuplier = tk.Entry(self.root, width=20)
-        self.pvn = tk.Entry(self.root, width=20)
-        self.searchQuery = tk.Entry(self.root, width=20)
+        self.fullName = tk.Entry(input_frame, width=20)
+        self.itemGroup = tk.Entry(input_frame, width=20)
+        self.inStock = tk.Entry(input_frame, width=20)
+        self.itemSuplier = tk.Entry(input_frame, width=20)
+        self.pvn = tk.Entry(input_frame, width=20)
+        self.price = tk.Entry(input_frame, width=20)
 
-        self.fullName.grid(row=0, column=1, padx=(0,5), pady=(5,0), sticky="w")
-        self.itemGroup.grid(row=1, column=1, padx=(0,5), pady=(5,0), sticky="w")
-        self.inStock.grid(row=2, column=1, padx=(0,5), pady=(5,0), sticky="w")
-        self.itemSuplier.grid(row=3, column=1, padx=(0,5), pady=(5,0), sticky="w")
-        self.pvn.grid(row=4, column=1, padx=(0,5), pady=(5,0), sticky="w")
-        self.searchQuery.grid(row=8, column=1, padx=(0,5), pady=(5,0), sticky="w")
+        self.fullName.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        self.itemGroup.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        self.inStock.grid(row=2, column=1, padx=5, pady=5, sticky="w")
+        self.itemSuplier.grid(row=3, column=1, padx=5, pady=5, sticky="w")
+        self.pvn.grid(row=4, column=1, padx=5, pady=5, sticky="w")
+        self.price.grid(row=5, column=1, padx=5, pady=5, sticky="w")
 
-        #                          --- Treeview ---
+         # --- Treeview Frame ---
+        tree_frame = tk.LabelFrame(self.root, text=" Task List ", padx=10, pady=10)
+        tree_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+
+        # --- Treeview ---
         columns = ("id", "FullName", "ItemGroup", "ItemSuplier", "ItemStatus", "DateCreated", "InStock")
-        self.tree = ttk.Treeview(self.root, columns=columns, selectmode=tk.EXTENDED, show="headings", height=11)
+        self.tree = ttk.Treeview(tree_frame, columns=columns, selectmode=tk.EXTENDED, show="headings", height=11)
         for col in columns:
             self.tree.heading(col, text=col.capitalize())
             self.tree.column(col, width=130)
-        self.tree.grid(row=0, column=2, rowspan=5, padx=10, pady=5, sticky="nsew")
+        self.tree.grid(row=0, column=0, sticky="nsew")
         self.tree.bind('<ButtonRelease-1>', self.on_item_select)
 
-        #                        --- Button frame ---
+           # --- Buttons Frame ---
+        button_frame = tk.Frame(input_frame)
+        button_frame.grid(row=5, column=0, columnspan=2, pady=(10, 0))
+        
         submitTask_button = tk.Button(
-            self.root,
+            button_frame,
             text="Submit",
             command=self.add_task, 
             activebackground="blue",
@@ -117,57 +140,43 @@ class TaskApp:
             width=10
         )
         updateTask_button = tk.Button(
-            self.root,
+            button_frame,
             text="Update", 
             command=self.update_task,
             activebackground="blue", 
             activeforeground="white",
             width=10
         )
-
         completeTask_button = tk.Button(
-            self.root,
+            button_frame,
             text="Complete task", 
             command=self.mark_complete,
             activebackground="blue", 
-            activeforeground="white"
+            activeforeground="white",
+            width=12
         )
         deleteTask_button = tk.Button(
-            self.root,
+            button_frame,
             text="Delete task", 
             command=self.delete_task,
             activebackground="blue", 
             activeforeground="white",
-            width=15
-        )
-        searchForTask_button = tk.Button(
-            self.root,
-            text="Search", 
-            command=self.search_for_tasks,
-            activebackground="blue", 
-            activeforeground="white",
-            width=15
+            width=12
         )
         
-        submitTask_button.grid(row=6, column=0, padx=5, pady=(10, 5), sticky="ew")
-        updateTask_button.grid(row=6, column=1, padx=(0, 5), pady=(10, 5), sticky="ew")
-        completeTask_button.grid(row=7, column=0, padx=5, pady=5, sticky="ew")
-        deleteTask_button.grid(row=7, column=1, padx=5, pady=5, sticky="ew")
-        searchForTask_button.grid(row=8, column=0, padx=5, pady=5, sticky="ew")
-
-        #                               --- Combobox ---
-        self.query = ttk.Combobox(self.root, values=["by id", "by title", "by status", "by description", "by quantity", "by stock", "All"])
-        self.query.set("Select a search query")
-        self.query.grid(row=8, column=2, padx=5, pady=5, sticky="w")
+        submitTask_button.grid(row=0, column=0, padx=3, pady=3)
+        updateTask_button.grid(row=0, column=1, padx=3, pady=3)
+        completeTask_button.grid(row=1, column=0, padx=3, pady=3)
+        deleteTask_button.grid(row=1, column=1, padx=3, pady=3)
 
     def add_task(self):
         title = self.fullName.get().strip()
         description = self.itemGroup.get().strip()
         quantity = self.inStock.get().strip()
-        price = self.itemSuplier.get().strip()
+        suplier = self.itemSuplier.get().strip()
         Pvn = self.pvn.get().strip()
 
-        fields = {'Title': title, 'Description': description, 'Quantity': quantity, 'Price': price, 'PVN': Pvn}
+        fields = {'Title': title, 'Description': description, 'Quantity': quantity, 'Suplier': suplier, 'PVN': Pvn}
         missing = [name for name, value in fields.items() if not value]
         if missing:
             if len(missing) == 1:
@@ -186,15 +195,10 @@ class TaskApp:
 
         self.cursor.execute(
             "INSERT INTO tasks (id, FullName, ItemGroup, ItemSuplier, InStock) VALUES (?, ?, ?, ?, ?)",
-            (next_id, title, description, price, quantity)
+            (next_id, title, description, suplier, quantity)
         )
 
-        self.cursor.execute("INSERT INTO price (task_id, price) VALUES (?, ?)", (next_id, price))
-
-        barcode = random.randint(0, 9999999999999)
-        barcode_str = f"{barcode:013}"
-        self.cursor.execute("INSERT INTO barcode (task_id, barcode) VALUES (?, ?)", (next_id, barcode_str))
-
+        self.cursor.execute("INSERT INTO price (task_id, price) VALUES (?, ?)", (next_id, 0))
         self.conn.commit()
             
         self.fullName.delete(0, tk.END)
@@ -235,7 +239,7 @@ class TaskApp:
         title = self.fullName.get().strip()
         description = self.itemGroup.get().strip()
         quantity = self.inStock.get().strip()
-        price = self.itemSuplier.get().strip()
+        suplier = self.itemSuplier.get().strip()
 
         fields = {'Title': title, 'Description': description, 'Quantity': quantity}
         missing = [name for name, value in fields.items() if not value]
@@ -246,7 +250,7 @@ class TaskApp:
 
         self.cursor.execute(
             "UPDATE tasks SET FullName = ?, ItemGroup = ?, ItemSuplier = ?, InStock = ? WHERE id = ?",
-            (title, description, price, quantity, task_id)
+            (title, description, suplier, quantity, task_id)
         )
         self.conn.commit()
         self.load_tasks()
