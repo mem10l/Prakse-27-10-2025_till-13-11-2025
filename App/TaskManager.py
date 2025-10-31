@@ -143,7 +143,7 @@ class TaskApp:
         submitTask_button = tk.Button(
             button_frame,
             text="Submit",
-            command=self.add_task, 
+            command=self.error_validation, 
             activebackground="blue",
             activeforeground="white",
             width=10
@@ -196,19 +196,6 @@ class TaskApp:
         Pvn = self.pvn.get().strip()
         barcode = self.barcode.get().strip()
 
-        fields = {'Title': title, 'Description': description, 'Quantity': quantity, 'Suplier': suplier, 'PVN': Pvn, 'Price': price}
-        missing = [name for name, value in fields.items() if not value]
-        if missing:
-            if len(missing) == 1:
-                messagebox.showwarning("Warning", f"{missing[0]} is required!")
-            else:
-                messagebox.showwarning("Warning", f"The following fields are required:\n• " + "\n• ".join(missing))
-            return
-        
-        if Pvn == "Select the PVN" or ',' not in Pvn:
-            messagebox.showwarning("Warning", "Please select a valid PVN!")
-            return
-        
         if not barcode:
             numbers = random.randint(0, 9999999999999)
             num = f"{numbers:013}"
@@ -251,7 +238,45 @@ class TaskApp:
         
         self.load_tasks()
         messagebox.showinfo("Success", "Task added!")
-        
+
+    def error_validation(self):
+        title = self.fullName.get().strip()
+        description = self.itemGroup.get().strip()
+        quantity = self.inStock.get().strip()
+        suplier = self.itemSuplier.get().strip()
+        price = self.price.get().strip()
+        Pvn = self.pvn.get().strip()
+    
+        try:
+            fields = {'FullName': title, 'ItemGroup': description, 'InStock': quantity, 'ItemSuplier': suplier, 'Price': price}
+            missing = [name for name, value in fields.items() if not value]
+            if missing:
+                if len(missing) == 1:
+                    messagebox.showwarning("Warning", f"{missing[0]} is required!")
+                else:
+                    messagebox.showwarning("Warning", "The following fields are required:\n• " + "\n• ".join(missing))
+                return
+
+            fields2 = {'Quantity': quantity, 'Price': price}
+            notNumerical = [name for name, value in fields2.items() 
+                            if not str(value).isdigit()]
+            if notNumerical:
+                if len(notNumerical) == 1:
+                    messagebox.showwarning("Warning", f"{notNumerical[0]} must be numeric!")
+                else:
+                    messagebox.showwarning("Warning", "The following fields are non-numeric:\n• " + "\n• ".join(notNumerical))
+                return
+
+            if Pvn == "Select the PVN" or ',' not in Pvn:
+                messagebox.showwarning("Warning", "Please select a valid PVN!")
+                return
+            
+            return self.add_task()
+            
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+
     def load_tasks(self):
         for row in self.tree.get_children():
             self.tree.delete(row)
@@ -354,11 +379,7 @@ class TaskApp:
             self.tree.delete(row)
         for row in rows:
             self.tree.insert("", tk.END, values=row)
-
-    def barcode_Generator(self):
-        barcode = self.barcode.get().strip()
         
-
 if __name__ == "__main__":
     root = tk.Tk()
     app = TaskApp(root)
