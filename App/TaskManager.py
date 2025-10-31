@@ -3,12 +3,16 @@ from tkinter import ttk, messagebox
 import sqlite3
 import os
 import random
+import pandas as pd
+
+df = pd.read_csv("./CSV/PVN.csv", header=None, sep=",")  
+pvn_values = df.apply(lambda row: f"{row[0]},{row[1]}", axis=1).tolist()
 
 class TaskApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Task Manager")
-        self.root.geometry("1200x380")
+        self.root.geometry("1250x420")
         
         # Initialize the database
         self.init_database()
@@ -40,6 +44,7 @@ class TaskApp:
         
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS barcode (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id INTEGER,
                 barcode TEXT,
                 is_primary BOOLEAN,
@@ -81,7 +86,7 @@ class TaskApp:
         
         tk.Label(search_frame, text="Search by:").grid(row=0, column=0, padx=5, pady=5)
         
-        self.query = ttk.Combobox(search_frame, values=["by id", "by title", "by status", "by description", "by quantity", "by stock", "All"])
+        self.query = ttk.Combobox(search_frame, values=["by id", "by FullName", "by ItemGroup", "by ItemSuplier", "by ItemStatus", "by DateCreated", "by InStock", "All"])
         self.query.set("Select a search query")
         self.query.grid(row=0, column=1, padx=5, pady=5)
 
@@ -96,23 +101,27 @@ class TaskApp:
         tk.Label(input_frame, text="ItemGroup").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         tk.Label(input_frame, text="InStock").grid(row=2, column=0, padx=5, pady=5, sticky="w")
         tk.Label(input_frame, text="ItemSuplier").grid(row=3, column=0, padx=5, pady=5, sticky="w")
-        tk.Label(input_frame, text="PVN").grid(row=4, column=0, padx=5, pady=5, sticky="w")
+        tk.Label(input_frame, text="PVN(0-3)").grid(row=4, column=0, padx=5, pady=5, sticky="w")
         tk.Label(input_frame, text="Price").grid(row=5, column=0, padx=5, pady=5, sticky="w")
+        tk.Label(input_frame, text="Barcode (Optional)").grid(row=6, column=0, padx=5, pady=5, sticky="w")
 
         #                        --- Entries ---
         self.fullName = tk.Entry(input_frame, width=20)
         self.itemGroup = tk.Entry(input_frame, width=20)
         self.inStock = tk.Entry(input_frame, width=20)
         self.itemSuplier = tk.Entry(input_frame, width=20)
-        self.pvn = tk.Entry(input_frame, width=20)
+        self.pvn = ttk.Combobox(input_frame, values=pvn_values)
+        self.pvn.set("Select the PVN")
         self.price = tk.Entry(input_frame, width=20)
+        self.barcode = tk.Entry(input_frame, width=20)
 
         self.fullName.grid(row=0, column=1, padx=5, pady=5, sticky="w")
         self.itemGroup.grid(row=1, column=1, padx=5, pady=5, sticky="w")
         self.inStock.grid(row=2, column=1, padx=5, pady=5, sticky="w")
-        self.itemSuplier.grid(row=3, column=1, padx=5, pady=5, sticky="w")
         self.pvn.grid(row=4, column=1, padx=5, pady=5, sticky="w")
+        self.itemSuplier.grid(row=3, column=1, padx=5, pady=5, sticky="w")
         self.price.grid(row=5, column=1, padx=5, pady=5, sticky="w")
+        self.barcode.grid(row=6, column=1, padx=5, pady=5, sticky="w")
 
          # --- Treeview Frame ---
         tree_frame = tk.LabelFrame(self.root, text=" Task List ", padx=10, pady=10)
@@ -129,7 +138,7 @@ class TaskApp:
 
            # --- Buttons Frame ---
         button_frame = tk.Frame(input_frame)
-        button_frame.grid(row=5, column=0, columnspan=2, pady=(10, 0))
+        button_frame.grid(row=7, column=0, columnspan=2, pady=(10, 0))
         
         submitTask_button = tk.Button(
             button_frame,
@@ -163,20 +172,31 @@ class TaskApp:
             activeforeground="white",
             width=12
         )
+        searchQuery_button = tk.Button(
+            search_frame,
+            text="Search", 
+            command=self.search_for_tasks,
+            activebackground="blue", 
+            activeforeground="white",
+            width=12
+        )
         
         submitTask_button.grid(row=0, column=0, padx=3, pady=3)
         updateTask_button.grid(row=0, column=1, padx=3, pady=3)
         completeTask_button.grid(row=1, column=0, padx=3, pady=3)
         deleteTask_button.grid(row=1, column=1, padx=3, pady=3)
+        searchQuery_button.grid(row=0, column=4, padx=3, pady=3)
 
     def add_task(self):
         title = self.fullName.get().strip()
         description = self.itemGroup.get().strip()
         quantity = self.inStock.get().strip()
         suplier = self.itemSuplier.get().strip()
+        price = self.price.get().strip()
         Pvn = self.pvn.get().strip()
+        barcode = self.barcode.get().strip()
 
-        fields = {'Title': title, 'Description': description, 'Quantity': quantity, 'Suplier': suplier, 'PVN': Pvn}
+        fields = {'Title': title, 'Description': description, 'Quantity': quantity, 'Suplier': suplier, 'PVN': Pvn, 'Price': price}
         missing = [name for name, value in fields.items() if not value]
         if missing:
             if len(missing) == 1:
@@ -184,6 +204,16 @@ class TaskApp:
             else:
                 messagebox.showwarning("Warning", f"The following fields are required:\n• " + "\n• ".join(missing))
             return
+        
+        if Pvn == "Select the PVN" or ',' not in Pvn:
+            messagebox.showwarning("Warning", "Please select a valid PVN!")
+            return
+        
+        if not barcode:
+            numbers = random.randint(0, 9999999999999)
+            num = f"{numbers:013}"
+        else:
+            num = barcode
 
         self.cursor.execute("SELECT id FROM tasks ORDER BY id")
         existing_ids = [row[0] for row in self.cursor.fetchall()]
@@ -193,12 +223,22 @@ class TaskApp:
                 break
             next_id = existing_id + 1
 
+        self.cursor.execute("INSERT INTO price (task_id, price) VALUES (?, ?)", (next_id, price))
+        price_id = self.cursor.lastrowid
+        
+        self.cursor.execute("INSERT INTO PVN (price_id, pvn) VALUES (?, ?)", (price_id, Pvn))
+        pvn_id = self.cursor.lastrowid
+
         self.cursor.execute(
-            "INSERT INTO tasks (id, FullName, ItemGroup, ItemSuplier, InStock) VALUES (?, ?, ?, ?, ?)",
-            (next_id, title, description, suplier, quantity)
+            "INSERT INTO tasks (id, FullName, ItemGroup, ItemSuplier, InStock, pvn_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (next_id, title, description, suplier, quantity, pvn_id)
         )
 
-        self.cursor.execute("INSERT INTO price (task_id, price) VALUES (?, ?)", (next_id, 0))
+        self.cursor.execute(
+            "INSERT INTO barcode (task_id, barcode) VALUES (?, ?)",
+            (next_id, num)
+        )
+
         self.conn.commit()
             
         self.fullName.delete(0, tk.END)
@@ -206,16 +246,19 @@ class TaskApp:
         self.inStock.delete(0, tk.END)
         self.itemSuplier.delete(0, tk.END)
         self.pvn.delete(0, tk.END)
+        self.price.delete(0, tk.END)
+        self.barcode.delete(0, tk.END)
+        
         self.load_tasks()
         messagebox.showinfo("Success", "Task added!")
-
+        
     def load_tasks(self):
         for row in self.tree.get_children():
             self.tree.delete(row)
         self.cursor.execute("SELECT * FROM tasks")
         for row in self.cursor.fetchall():
             self.tree.insert("", tk.END, values=row)
-
+    
     def on_item_select(self, event):
         item_id = self.tree.focus()
         item = self.tree.item(item_id)
@@ -281,21 +324,24 @@ class TaskApp:
         if query_type == "by id":
             sql = "SELECT * FROM tasks WHERE id = ?"
             value = (value,)
-        elif query_type == "by title":
+        elif query_type == "by FullName":
             sql = "SELECT * FROM tasks WHERE FullName LIKE ?"
-            value = ('%' + value + '%',)
-        elif query_type == "by status":
-            sql = "SELECT * FROM tasks WHERE ItemStatus LIKE ?"
             value = (value,)
-        elif query_type == "by description":
+        elif query_type == "by ItemGroup":
             sql = "SELECT * FROM tasks WHERE ItemGroup LIKE ?"
+            value = (value,)
+        elif query_type == "by ItemSuplier":
+            sql = "SELECT * FROM tasks WHERE ItemSuplier LIKE ?"
+            value = (value,)
+        elif query_type == "by ItemStatus":
+            sql = "SELECT * FROM tasks WHERE ItemStatus = ?"
+            value = (value,)
+        elif query_type == "by DateCreated":
+            sql = "SELECT * FROM tasks WHERE DateCreated = ?"
+            value = (value,)
+        elif query_type == "by InStock":
+            sql = "SELECT * FROM tasks WHERE InStock LIKE ?"
             value = ('%' + value + '%',)
-        elif query_type == "by quantity":
-            sql = "SELECT * FROM tasks WHERE ItemSuplier = ?"
-            value = (value,)
-        elif query_type == "by stock":
-            sql = "SELECT * FROM tasks WHERE InStock = ?"
-            value = (value,)
         elif query_type == "All":
             sql = "SELECT * FROM tasks"
             value = ()
@@ -309,6 +355,9 @@ class TaskApp:
         for row in rows:
             self.tree.insert("", tk.END, values=row)
 
+    def barcode_Generator(self):
+        barcode = self.barcode.get().strip()
+        
 
 if __name__ == "__main__":
     root = tk.Tk()
