@@ -4,9 +4,10 @@ import sqlite3
 import os
 import random
 import pandas as pd
+import keyboard
 
-df = pd.read_csv("./CSV/PVN.csv", header=None, sep=",")  
-pvn_values = df.apply(lambda row: f"{row[0]},{row[1]}", axis=1).tolist()
+df = pd.read_csv("./CSV/PVN.csv", header=None)
+pvn_values = df.iloc[:, 0].dropna().astype(str).str.strip().tolist()
 
 class TaskApp:
     def __init__(self, root):
@@ -20,6 +21,7 @@ class TaskApp:
         # Create GUI
         self.create_widgets()
         self.load_tasks()
+        self.root.bind('<Escape>', self.clear_selection)
 
     def init_database(self):
         db_folder = './Database'
@@ -46,8 +48,8 @@ class TaskApp:
             CREATE TABLE IF NOT EXISTS barcode (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id INTEGER,
-                barcode TEXT,
-                is_primary BOOLEAN,
+                barcode INTEGER,
+                is_primary INTEGER,
                 FOREIGN KEY(task_id) REFERENCES tasks(id)
             )
         ''')
@@ -57,7 +59,7 @@ class TaskApp:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id INTEGER,
                 price DECIMAL(10, 2),
-                currency CHAR(3) DEFAULT 'EUR',
+                currency TEXT DEFAULT 'EUR',
                 FOREIGN KEY(task_id) REFERENCES tasks(id)
             )
         ''')
@@ -137,6 +139,8 @@ class TaskApp:
         self.tree.bind('<ButtonRelease-1>', self.on_item_select)
 
            # --- Buttons Frame ---
+        
+        self.tree.bind('<Escape>', self.clear_selection)
         button_frame = tk.Frame(input_frame)
         button_frame.grid(row=7, column=0, columnspan=2, pady=(10, 0))
         
@@ -187,6 +191,22 @@ class TaskApp:
         deleteTask_button.grid(row=1, column=1, padx=3, pady=3)
         searchQuery_button.grid(row=0, column=4, padx=3, pady=3)
 
+
+    def clear_selection(self):
+        self.tree.selection_remove(self.tree.selection())
+        
+        self.fullName.delete(0, tk.END)
+        self.itemGroup.delete(0, tk.END)
+        self.inStock.delete(0, tk.END)
+        self.itemSuplier.delete(0, tk.END)
+        self.pvn.set("Select the PVN")
+        self.price.delete(0, tk.END)
+        self.barcode.delete(0, tk.END)
+        
+        # Clear selected_id if it exists
+        if hasattr(self, 'selected_id'):
+            del self.selected_id
+            
     def add_task(self):
         title = self.fullName.get().strip()
         description = self.itemGroup.get().strip()
@@ -267,7 +287,7 @@ class TaskApp:
                     messagebox.showwarning("Warning", "The following fields are non-numeric:\n• " + "\n• ".join(notNumerical))
                 return
 
-            if Pvn == "Select the PVN" or ',' not in Pvn:
+            if Pvn == "Select the PVN" not in Pvn:
                 messagebox.showwarning("Warning", "Please select a valid PVN!")
                 return
             
@@ -291,35 +311,107 @@ class TaskApp:
         if not values:
             return
 
+        task_id = values[0]
+        
         self.fullName.delete(0, tk.END)
-        self.fullName.insert(0, values[1])
+        self.fullName.insert(0, str(values[1]))
         self.itemGroup.delete(0, tk.END)
-        self.itemGroup.insert(0, values[2])
-        self.inStock.delete(0, tk.END)
-        self.inStock.insert(0, values[6])
+        self.itemGroup.insert(0, str(values[2]))
         self.itemSuplier.delete(0, tk.END)
-        self.itemSuplier.insert(0, values[3])
+        self.itemSuplier.insert(0, str(values[3]))
+        self.inStock.delete(0, tk.END)
+        self.inStock.insert(0, str(values[6]))
+        
+        self.cursor.execute("SELECT id, price FROM price WHERE task_id = ?", (task_id,))
+        price_result = self.cursor.fetchone()
+        self.price.delete(0, tk.END)
+        if price_result:
+            self.price.insert(0, str(int(float(price_result[1]))))
+        else:
+            self.price.insert(0, "")
 
-        self.selected_id = values[0]
+        if price_result:
+            price_id = price_result[0]
+            self.cursor.execute("SELECT pvn FROM PVN WHERE price_id = ?", (price_id,))
+            pvn_result = self.cursor.fetchone()
+
+        else:
+            pvn_result = None
+            
+        self.pvn.set("")
+        if pvn_result:
+            pvn_str = str(pvn_result[0]).strip()
+            matching_value = None
+            for pv in pvn_values:
+                if pvn_str in pv or pv.startswith(pvn_str):
+                    matching_value = pv
+                    break
+            if matching_value:
+                self.pvn.set(matching_value)
+            else:
+                self.pvn.set(pvn_str)
+
+        self.cursor.execute("SELECT barcode FROM barcode WHERE task_id = ?", (task_id,))
+        barcode_result = self.cursor.fetchone()
+        self.barcode.delete(0, tk.END)
+        if barcode_result:
+            self.barcode.insert(0, str(barcode_result[0]))
+        else:
+            self.barcode.insert(0, "")
+
+        self.selected_id = task_id
 
     def update_task(self):
+        if not hasattr(self, 'selected_id'):
+            messagebox.showwarning("Warning", "Please select a task to update!")
+            return
+            
         task_id = self.selected_id
         title = self.fullName.get().strip()
         description = self.itemGroup.get().strip()
         quantity = self.inStock.get().strip()
         suplier = self.itemSuplier.get().strip()
+        price = self.price.get().strip()
+        pvn = self.pvn.get().strip()
+        barcode = self.barcode.get().strip()
 
-        fields = {'Title': title, 'Description': description, 'Quantity': quantity}
+        fields = {'FullName': title, 'ItemGroup': description, 'InStock': quantity, 'ItemSuplier': suplier, 'Price': price}
         missing = [name for name, value in fields.items() if not value]
         if missing:
-            message = f"{missing[0]} is required!" if len(missing)==1 else f"The following fields are required:\n• " + "\n• ".join(missing)
-            messagebox.showwarning("Warning", message)
+            if len(missing) == 1:
+                messagebox.showwarning("Warning", f"{missing[0]} is required!")
+            else:
+                messagebox.showwarning("Warning", "The following fields are required:\n• " + "\n• ".join(missing))
+            return
+
+        fields2 = {'Quantity': quantity, 'Price': price}
+        notNumerical = [name for name, value in fields2.items() if not str(value).isdigit()]
+        if notNumerical:
+            if len(notNumerical) == 1:
+                messagebox.showwarning("Warning", f"{notNumerical[0]} must be numeric!")
+            else:
+                messagebox.showwarning("Warning", "The following fields are non-numeric:\n• " + "\n• ".join(notNumerical))
+            return
+
+        if pvn == "Select the PVN" or ',' not in pvn:
+            messagebox.showwarning("Warning", "Please select a valid PVN!")
             return
 
         self.cursor.execute(
             "UPDATE tasks SET FullName = ?, ItemGroup = ?, ItemSuplier = ?, InStock = ? WHERE id = ?",
             (title, description, suplier, quantity, task_id)
         )
+
+        self.cursor.execute("UPDATE price SET price = ? WHERE task_id = ?", (price, task_id))
+
+        self.cursor.execute("""
+            UPDATE PVN SET pvn = ? 
+            WHERE price_id IN (SELECT id FROM price WHERE task_id = ?)
+        """, (pvn, task_id))
+
+        if barcode:
+            self.cursor.execute("UPDATE barcode SET barcode = ? WHERE task_id = ?", (barcode, task_id))
+
         self.conn.commit()
         self.load_tasks()
         messagebox.showinfo("Success", "Task updated successfully!")
