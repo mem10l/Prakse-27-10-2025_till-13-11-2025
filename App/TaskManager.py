@@ -192,7 +192,7 @@ class TaskApp:
         searchQuery_button.grid(row=0, column=4, padx=3, pady=3)
 
 
-    def clear_selection(self):
+    def clear_selection(self, event=None):
         self.tree.selection_remove(self.tree.selection())
         
         self.fullName.delete(0, tk.END)
@@ -202,8 +202,7 @@ class TaskApp:
         self.pvn.set("Select the PVN")
         self.price.delete(0, tk.END)
         self.barcode.delete(0, tk.END)
-        
-        # Clear selected_id if it exists
+
         if hasattr(self, 'selected_id'):
             del self.selected_id
             
