@@ -20,6 +20,7 @@ class TaskApp:
         
         # Create GUI
         self.create_widgets()
+        self.setup_enter_navigation()
         self.load_tasks()
         self.root.bind('<Escape>', self.clear_selection)
 
@@ -79,9 +80,6 @@ class TaskApp:
         #                   --- Input frame ---
         input_frame = tk.LabelFrame(self.root, text=" Task Input ", padx=10, pady=10)
         input_frame.grid(row=0, column=0, padx=10, pady=10, sticky="n")
-
-        search_frame = tk.LabelFrame(self.root, text=" Search ", padx=10, pady=5)
-        search_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="ew")
 
         search_frame = tk.LabelFrame(self.root, text=" Search ", padx=10, pady=5)
         search_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="ew")
@@ -147,7 +145,7 @@ class TaskApp:
         submitTask_button = tk.Button(
             button_frame,
             text="Submit",
-            command=self.error_validation, 
+            command=lambda: self.validate(self.add_task), 
             activebackground="blue",
             activeforeground="white",
             width=10
@@ -155,7 +153,7 @@ class TaskApp:
         updateTask_button = tk.Button(
             button_frame,
             text="Update", 
-            command=self.update_task,
+            command=lambda: self.validate(self.update_task),
             activebackground="blue", 
             activeforeground="white",
             width=10
@@ -191,6 +189,24 @@ class TaskApp:
         deleteTask_button.grid(row=1, column=1, padx=3, pady=3)
         searchQuery_button.grid(row=0, column=4, padx=3, pady=3)
 
+    def setup_enter_navigation(self):
+        """Set up Enter key to navigate between fields"""
+        self.input_fields = [
+            self.fullName,
+            self.itemGroup,
+            self.inStock,
+            self.itemSuplier,
+            self.pvn,
+            self.price,
+            self.barcode
+        ]
+        
+        for i, field in enumerate(self.input_fields):
+            if i < len(self.input_fields) - 1:
+                next_field = self.input_fields[i + 1]
+                field.bind('<Return>', lambda e, nf=next_field: nf.focus())
+            else:
+                field.bind('<Return>', lambda e: self.validate(self.add_task))
 
     def clear_selection(self, event=None):
         self.tree.selection_remove(self.tree.selection())
@@ -205,6 +221,47 @@ class TaskApp:
 
         if hasattr(self, 'selected_id'):
             del self.selected_id
+
+    def validate(self, action_function):
+        title = self.fullName.get().strip()
+        description = self.itemGroup.get().strip()
+        quantity = self.inStock.get().strip()
+        suplier = self.itemSuplier.get().strip()
+        price = self.price.get().strip()
+        Pvn = self.pvn.get().strip()
+    
+        try:
+            fields = {'FullName': title, 'ItemGroup': description, 'InStock': quantity, 'ItemSuplier': suplier, 'Price': price}
+            missing = [name for name, value in fields.items() if not value]
+            if missing:
+                if len(missing) == 1:
+                    messagebox.showwarning("Warning", f"{missing[0]} is required!")
+                else:
+                    messagebox.showwarning("Warning", "The following fields are required:\n• " + "\n• ".join(missing))
+                return
+
+            fields2 = {'Quantity': quantity, 'Price': price}
+            notNumerical = [name for name, value in fields2.items() 
+                            if not str(value).isdigit()]
+            if notNumerical:
+                if len(notNumerical) == 1:
+                    messagebox.showwarning("Warning", f"{notNumerical[0]} must be numeric!")
+                else:
+                    messagebox.showwarning("Warning", "The following fields are non-numeric:\n• " + "\n• ".join(notNumerical))
+                return
+
+            if Pvn == "Select the PVN" or not Pvn:
+                messagebox.showwarning("Warning", "Please select a valid PVN!")
+                return
+            
+            if action_function == self.update_task and not hasattr(self, 'selected_id'):
+                messagebox.showwarning("Warning", "Please select a task to update!")
+                return
+            
+            return action_function()
+            
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
             
     def add_task(self):
         title = self.fullName.get().strip()
@@ -251,50 +308,12 @@ class TaskApp:
         self.itemGroup.delete(0, tk.END)
         self.inStock.delete(0, tk.END)
         self.itemSuplier.delete(0, tk.END)
-        self.pvn.delete(0, tk.END)
+        self.pvn.set("Select the PVN")
         self.price.delete(0, tk.END)
         self.barcode.delete(0, tk.END)
         
         self.load_tasks()
         messagebox.showinfo("Success", "Task added!")
-
-    def error_validation(self):
-        title = self.fullName.get().strip()
-        description = self.itemGroup.get().strip()
-        quantity = self.inStock.get().strip()
-        suplier = self.itemSuplier.get().strip()
-        price = self.price.get().strip()
-        Pvn = self.pvn.get().strip()
-    
-        try:
-            fields = {'FullName': title, 'ItemGroup': description, 'InStock': quantity, 'ItemSuplier': suplier, 'Price': price}
-            missing = [name for name, value in fields.items() if not value]
-            if missing:
-                if len(missing) == 1:
-                    messagebox.showwarning("Warning", f"{missing[0]} is required!")
-                else:
-                    messagebox.showwarning("Warning", "The following fields are required:\n• " + "\n• ".join(missing))
-                return
-
-            fields2 = {'Quantity': quantity, 'Price': price}
-            notNumerical = [name for name, value in fields2.items() 
-                            if not str(value).isdigit()]
-            if notNumerical:
-                if len(notNumerical) == 1:
-                    messagebox.showwarning("Warning", f"{notNumerical[0]} must be numeric!")
-                else:
-                    messagebox.showwarning("Warning", "The following fields are non-numeric:\n• " + "\n• ".join(notNumerical))
-                return
-
-            if Pvn == "Select the PVN" not in Pvn:
-                messagebox.showwarning("Warning", "Please select a valid PVN!")
-                return
-            
-            return self.add_task()
-            
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-
 
     def load_tasks(self):
         for row in self.tree.get_children():
@@ -361,10 +380,6 @@ class TaskApp:
         self.selected_id = task_id
 
     def update_task(self):
-        if not hasattr(self, 'selected_id'):
-            messagebox.showwarning("Warning", "Please select a task to update!")
-            return
-            
         task_id = self.selected_id
         title = self.fullName.get().strip()
         description = self.itemGroup.get().strip()
@@ -373,28 +388,6 @@ class TaskApp:
         price = self.price.get().strip()
         pvn = self.pvn.get().strip()
         barcode = self.barcode.get().strip()
-
-        fields = {'FullName': title, 'ItemGroup': description, 'InStock': quantity, 'ItemSuplier': suplier, 'Price': price}
-        missing = [name for name, value in fields.items() if not value]
-        if missing:
-            if len(missing) == 1:
-                messagebox.showwarning("Warning", f"{missing[0]} is required!")
-            else:
-                messagebox.showwarning("Warning", "The following fields are required:\n• " + "\n• ".join(missing))
-            return
-
-        fields2 = {'Quantity': quantity, 'Price': price}
-        notNumerical = [name for name, value in fields2.items() if not str(value).isdigit()]
-        if notNumerical:
-            if len(notNumerical) == 1:
-                messagebox.showwarning("Warning", f"{notNumerical[0]} must be numeric!")
-            else:
-                messagebox.showwarning("Warning", "The following fields are non-numeric:\n• " + "\n• ".join(notNumerical))
-            return
-
-        if pvn == "Select the PVN" or ',' not in pvn:
-            messagebox.showwarning("Warning", "Please select a valid PVN!")
-            return
 
         self.cursor.execute(
             "UPDATE tasks SET FullName = ?, ItemGroup = ?, ItemSuplier = ?, InStock = ? WHERE id = ?",
@@ -417,6 +410,10 @@ class TaskApp:
         del self.selected_id
 
     def delete_task(self):
+        if not hasattr(self, 'selected_id'):
+            messagebox.showwarning("Warning", "Please select a task to delete!")
+            return
+            
         task_id = self.selected_id
         self.cursor.execute("DELETE FROM barcode WHERE task_id = ?", (task_id,))
         self.cursor.execute("DELETE FROM price WHERE task_id = ?", (task_id,))
@@ -427,6 +424,10 @@ class TaskApp:
         del self.selected_id
 
     def mark_complete(self):
+        if not hasattr(self, 'selected_id'):
+            messagebox.showwarning("Warning", "Please select a task to mark as complete!")
+            return
+            
         task_id = self.selected_id
         self.cursor.execute("UPDATE tasks SET ItemStatus = ? WHERE id = ?", ("completed", task_id))
         self.conn.commit()
@@ -442,13 +443,13 @@ class TaskApp:
             value = (value,)
         elif query_type == "by FullName":
             sql = "SELECT * FROM tasks WHERE FullName LIKE ?"
-            value = (value,)
+            value = ('%' + value + '%',)
         elif query_type == "by ItemGroup":
             sql = "SELECT * FROM tasks WHERE ItemGroup LIKE ?"
-            value = (value,)
+            value = ('%' + value + '%',)
         elif query_type == "by ItemSuplier":
             sql = "SELECT * FROM tasks WHERE ItemSuplier LIKE ?"
-            value = (value,)
+            value = ('%' + value + '%',)
         elif query_type == "by ItemStatus":
             sql = "SELECT * FROM tasks WHERE ItemStatus = ?"
             value = (value,)
