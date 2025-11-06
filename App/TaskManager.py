@@ -4,34 +4,36 @@ import sqlite3
 import os
 import random
 import pandas as pd
-import keyboard
+from typing import Optional, List, Tuple
+from contextlib import contextmanager
 
-df = pd.read_csv("./CSV/PVN.csv", header=None)
-pvn_values = df.iloc[:, 0].dropna().astype(str).str.strip().tolist()
-
-class TaskApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Task Manager")
-        self.root.geometry("1250x420")
+class Database:
+    """Handles all database operations with proper connection management."""
+    
+    def __init__(self, db_path: str = './Database/tasks.db'):
+        self.db_path = db_path
+        self._ensure_database_exists()
         
-        # Initialize the database
-        self.init_database()
-        
-        # Create GUI
-        self.create_widgets()
-        self.setup_enter_navigation()
-        self.load_tasks()
-        self.root.bind('<Escape>', self.clear_selection)
-
-    def init_database(self):
-        db_folder = './Database'
-        os.makedirs(db_folder, exist_ok=True)
-        
-        self.conn = sqlite3.connect('./Database/tasks.db')
-        self.cursor = self.conn.cursor()
-        
-        self.cursor.execute('''
+    def _ensure_database_exists(self):
+        """Create database directory and initialize tables if needed."""
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            self._create_tables(cursor)
+            conn.commit()
+    
+    @contextmanager
+    def get_connection(self):
+        """Context manager for database connections."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            yield conn
+        finally:
+            conn.close()
+    
+    def _create_tables(self, cursor):
+        """Create all necessary database tables."""
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 FullName TEXT NOT NULL,
@@ -45,433 +47,550 @@ class TaskApp:
             )
         ''')
         
-        self.cursor.execute('''
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS barcode (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id INTEGER,
-                barcode INTEGER,
-                is_primary INTEGER,
-                FOREIGN KEY(task_id) REFERENCES tasks(id)
+                barcode TEXT UNIQUE,
+                is_primary INTEGER DEFAULT 1,
+                FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
             )
         ''')
         
-        self.cursor.execute('''
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS price (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id INTEGER,
                 price DECIMAL(10, 2),
                 currency TEXT DEFAULT 'EUR',
-                FOREIGN KEY(task_id) REFERENCES tasks(id)
+                FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
             )
         ''')
         
-        self.cursor.execute('''
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS PVN (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 price_id INTEGER,
-                pvn INTEGER,
-                FOREIGN KEY(price_id) REFERENCES price(id)
+                pvn TEXT,
+                FOREIGN KEY(price_id) REFERENCES price(id) ON DELETE CASCADE
             )
         ''')
         
-        self.conn.commit()
+        # Create indexes for better performance
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_task_status ON tasks(ItemStatus)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_barcode ON barcode(barcode)')
+
+class TaskApp:
+    """Main application class for the Task Manager."""
+    
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Task Manager Pro")
+        self.root.geometry("1250x450")
+        self.root.resizable(True, True)
+        
+        # Initialize database
+        self.db = Database()
+        
+        # Load PVN values
+        self.pvn_values = self._load_pvn_values()
+        
+        # Track selected task
+        self.selected_id: Optional[int] = None
+        
+        # Create GUI
+        self.create_widgets()
+        self.setup_keyboard_bindings()
+        self.load_tasks()
+        
+    def _load_pvn_values(self) -> List[str]:
+        """Load PVN values from CSV file."""
+        try:
+            df = pd.read_csv("./CSV/PVN.csv", header=None)
+            return df.iloc[:, 0].dropna().astype(str).str.strip().tolist()
+        except FileNotFoundError:
+            messagebox.showwarning("Warning", "PVN.csv not found. Using default values.")
+            return ["0%", "5%", "12%", "21%"]
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load PVN values: {e}")
+            return ["0%", "5%", "12%", "21%"]
 
     def create_widgets(self):
-        #                   --- Input frame ---
+        """Create all GUI widgets."""
+        # Configure grid weights for responsive layout
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(1, weight=1)
+        
+        self._create_input_frame()
+        self._create_search_frame()
+        self._create_tree_frame()
+
+    def _create_input_frame(self):
+        """Create the input frame with all entry fields."""
         input_frame = tk.LabelFrame(self.root, text=" Task Input ", padx=10, pady=10)
         input_frame.grid(row=0, column=0, padx=10, pady=10, sticky="n")
 
+        # Labels
+        labels = ["FullName", "ItemGroup", "InStock", "ItemSuplier", "PVN", "Price", "Barcode (Optional)"]
+        for i, label in enumerate(labels):
+            tk.Label(input_frame, text=label).grid(row=i, column=0, padx=5, pady=5, sticky="w")
+
+        # Entry fields
+        self.fullName = tk.Entry(input_frame, width=25)
+        self.itemGroup = tk.Entry(input_frame, width=25)
+        self.inStock = tk.Entry(input_frame, width=25)
+        self.itemSuplier = tk.Entry(input_frame, width=25)
+        self.pvn = ttk.Combobox(input_frame, values=self.pvn_values, width=23)
+        self.pvn.set("Select PVN")
+        self.price = tk.Entry(input_frame, width=25)
+        self.barcode = tk.Entry(input_frame, width=25)
+
+        entries = [self.fullName, self.itemGroup, self.inStock, self.itemSuplier, 
+                   self.pvn, self.price, self.barcode]
+        for i, entry in enumerate(entries):
+            entry.grid(row=i, column=1, padx=5, pady=5, sticky="w")
+
+        # Buttons
+        button_frame = tk.Frame(input_frame)
+        button_frame.grid(row=7, column=0, columnspan=2, pady=(15, 0))
+        
+        buttons = [
+            ("Submit", self.handle_submit, 0, 0, 10),
+            ("Update", self.handle_update, 0, 1, 10),
+            ("Complete", self.mark_complete, 1, 0, 12),
+            ("Delete", self.delete_task, 1, 1, 12),
+            ("Clear", self.clear_selection, 2, 0, 10),
+            ("Refresh", self.load_tasks, 2, 1, 10)
+        ]
+        
+        for text, command, row, col, width in buttons:
+            btn = tk.Button(button_frame, text=text, command=command,
+                           activebackground="blue", activeforeground="white", width=width)
+            btn.grid(row=row, column=col, padx=3, pady=3)
+
+    def _create_search_frame(self):
+        """Create the search frame."""
         search_frame = tk.LabelFrame(self.root, text=" Search ", padx=10, pady=5)
         search_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="ew")
         
         tk.Label(search_frame, text="Search by:").grid(row=0, column=0, padx=5, pady=5)
         
-        self.query = ttk.Combobox(search_frame, values=["by id", "by FullName", "by ItemGroup", "by ItemSuplier", "by ItemStatus", "by DateCreated", "by InStock", "All"])
-        self.query.set("Select a search query")
+        self.query = ttk.Combobox(search_frame, values=[
+            "by id", "by FullName", "by ItemGroup", "by ItemSuplier", 
+            "by ItemStatus", "by DateCreated", "by InStock", "All"
+        ], width=15)
+        self.query.set("All")
         self.query.grid(row=0, column=1, padx=5, pady=5)
 
         tk.Label(search_frame, text="Search term:").grid(row=0, column=2, padx=5, pady=5)
         
-        self.searchQuery = tk.Entry(search_frame, width=20)
+        self.searchQuery = tk.Entry(search_frame, width=25)
         self.searchQuery.grid(row=0, column=3, padx=5, pady=5)
+        self.searchQuery.bind('<Return>', lambda e: self.search_for_tasks())
         
-        
-        #                    --- Labels ---
-        tk.Label(input_frame, text="FullName").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        tk.Label(input_frame, text="ItemGroup").grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        tk.Label(input_frame, text="InStock").grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        tk.Label(input_frame, text="ItemSuplier").grid(row=3, column=0, padx=5, pady=5, sticky="w")
-        tk.Label(input_frame, text="PVN(0-3)").grid(row=4, column=0, padx=5, pady=5, sticky="w")
-        tk.Label(input_frame, text="Price").grid(row=5, column=0, padx=5, pady=5, sticky="w")
-        tk.Label(input_frame, text="Barcode (Optional)").grid(row=6, column=0, padx=5, pady=5, sticky="w")
+        tk.Button(search_frame, text="Search", command=self.search_for_tasks,
+                 activebackground="blue", activeforeground="white", width=12
+                 ).grid(row=0, column=4, padx=5, pady=5)
 
-        #                        --- Entries ---
-        self.fullName = tk.Entry(input_frame, width=20)
-        self.itemGroup = tk.Entry(input_frame, width=20)
-        self.inStock = tk.Entry(input_frame, width=20)
-        self.itemSuplier = tk.Entry(input_frame, width=20)
-        self.pvn = ttk.Combobox(input_frame, values=pvn_values)
-        self.pvn.set("Select the PVN")
-        self.price = tk.Entry(input_frame, width=20)
-        self.barcode = tk.Entry(input_frame, width=20)
-
-        self.fullName.grid(row=0, column=1, padx=5, pady=5, sticky="w")
-        self.itemGroup.grid(row=1, column=1, padx=5, pady=5, sticky="w")
-        self.inStock.grid(row=2, column=1, padx=5, pady=5, sticky="w")
-        self.pvn.grid(row=4, column=1, padx=5, pady=5, sticky="w")
-        self.itemSuplier.grid(row=3, column=1, padx=5, pady=5, sticky="w")
-        self.price.grid(row=5, column=1, padx=5, pady=5, sticky="w")
-        self.barcode.grid(row=6, column=1, padx=5, pady=5, sticky="w")
-
-         # --- Treeview Frame ---
+    def _create_tree_frame(self):
+        """Create the treeview frame with scrollbar."""
         tree_frame = tk.LabelFrame(self.root, text=" Task List ", padx=10, pady=10)
         tree_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
 
-        # --- Treeview ---
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # Treeview
         columns = ("id", "FullName", "ItemGroup", "ItemSuplier", "ItemStatus", "DateCreated", "InStock")
-        self.tree = ttk.Treeview(tree_frame, columns=columns, selectmode=tk.EXTENDED, show="headings", height=11)
+        self.tree = ttk.Treeview(tree_frame, columns=columns, selectmode=tk.EXTENDED, 
+                                 show="headings", height=15, yscrollcommand=scrollbar.set)
+        
+        scrollbar.config(command=self.tree.yview)
+        
+        # Configure columns
+        column_widths = {"id": 50, "FullName": 180, "ItemGroup": 120, "ItemSuplier": 120, 
+                        "ItemStatus": 90, "DateCreated": 150, "InStock": 80}
+        
         for col in columns:
             self.tree.heading(col, text=col.capitalize())
-            self.tree.column(col, width=130)
+            self.tree.column(col, width=column_widths.get(col, 100))
+        
         self.tree.grid(row=0, column=0, sticky="nsew")
         self.tree.bind('<ButtonRelease-1>', self.on_item_select)
+        self.tree.bind('<Double-Button-1>', lambda e: self.handle_update())
+        
+        # Status bar
+        self.status_label = tk.Label(tree_frame, text="Ready", anchor="w", relief=tk.SUNKEN)
+        self.status_label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(5, 0))
 
-           # --- Buttons Frame ---
+    def setup_keyboard_bindings(self):
+        """Setup keyboard shortcuts and navigation."""
+        self.root.bind('<Escape>', lambda e: self.clear_selection())
+        self.root.bind('<Control-s>', lambda e: self.handle_submit())
+        self.root.bind('<Control-d>', lambda e: self.delete_task())
+        self.root.bind('<Delete>', lambda e: self.delete_task())
+        self.root.bind('<F5>', lambda e: self.load_tasks())
         
-        self.tree.bind('<Escape>', self.clear_selection)
-        button_frame = tk.Frame(input_frame)
-        button_frame.grid(row=7, column=0, columnspan=2, pady=(10, 0))
+        # Enter key navigation between fields
+        fields = [self.fullName, self.itemGroup, self.inStock, self.itemSuplier, 
+                  self.pvn, self.price, self.barcode]
         
-        submitTask_button = tk.Button(
-            button_frame,
-            text="Submit",
-            command=lambda: self.validate(self.add_task), 
-            activebackground="blue",
-            activeforeground="white",
-            width=10
-        )
-        updateTask_button = tk.Button(
-            button_frame,
-            text="Update", 
-            command=lambda: self.validate(self.update_task),
-            activebackground="blue", 
-            activeforeground="white",
-            width=10
-        )
-        completeTask_button = tk.Button(
-            button_frame,
-            text="Complete task", 
-            command=self.mark_complete,
-            activebackground="blue", 
-            activeforeground="white",
-            width=12
-        )
-        deleteTask_button = tk.Button(
-            button_frame,
-            text="Delete task", 
-            command=self.delete_task,
-            activebackground="blue", 
-            activeforeground="white",
-            width=12
-        )
-        searchQuery_button = tk.Button(
-            search_frame,
-            text="Search", 
-            command=self.search_for_tasks,
-            activebackground="blue", 
-            activeforeground="white",
-            width=12
-        )
+        for i, field in enumerate(fields[:-1]):
+            field.bind('<Return>', lambda e, next_field=fields[i+1]: next_field.focus())
         
-        submitTask_button.grid(row=0, column=0, padx=3, pady=3)
-        updateTask_button.grid(row=0, column=1, padx=3, pady=3)
-        completeTask_button.grid(row=1, column=0, padx=3, pady=3)
-        deleteTask_button.grid(row=1, column=1, padx=3, pady=3)
-        searchQuery_button.grid(row=0, column=4, padx=3, pady=3)
+        fields[-1].bind('<Return>', lambda e: self.handle_submit())
 
-    def setup_enter_navigation(self):
-        """Set up Enter key to navigate between fields"""
-        self.input_fields = [
-            self.fullName,
-            self.itemGroup,
-            self.inStock,
-            self.itemSuplier,
-            self.pvn,
-            self.price,
-            self.barcode
-        ]
-        
-        for i, field in enumerate(self.input_fields):
-            if i < len(self.input_fields) - 1:
-                next_field = self.input_fields[i + 1]
-                field.bind('<Return>', lambda e, nf=next_field: nf.focus())
-            else:
-                field.bind('<Return>', lambda e: self.validate(self.add_task))
-
-    def clear_selection(self, event=None):
+    def clear_selection(self):
+        """Clear all selections and input fields."""
         self.tree.selection_remove(self.tree.selection())
         
-        self.fullName.delete(0, tk.END)
-        self.itemGroup.delete(0, tk.END)
-        self.inStock.delete(0, tk.END)
-        self.itemSuplier.delete(0, tk.END)
-        self.pvn.set("Select the PVN")
-        self.price.delete(0, tk.END)
-        self.barcode.delete(0, tk.END)
+        for field in [self.fullName, self.itemGroup, self.inStock, self.itemSuplier, 
+                      self.price, self.barcode]:
+            field.delete(0, tk.END)
+        
+        self.pvn.set("Select PVN")
+        self.selected_id = None
+        self.update_status("Selection cleared")
 
-        if hasattr(self, 'selected_id'):
-            del self.selected_id
+    def validate_inputs(self, for_update: bool = False) -> bool:
+        """Validate all input fields."""
+        # Check required fields
+        fields = {
+            'FullName': self.fullName.get().strip(),
+            'ItemGroup': self.itemGroup.get().strip(),
+            'InStock': self.inStock.get().strip(),
+            'ItemSuplier': self.itemSuplier.get().strip(),
+            'Price': self.price.get().strip()
+        }
+        
+        missing = [name for name, value in fields.items() if not value]
+        if missing:
+            messagebox.showwarning("Validation Error", 
+                                  f"Required fields missing:\n• " + "\n• ".join(missing))
+            return False
 
-    def validate(self, action_function):
-        title = self.fullName.get().strip()
-        description = self.itemGroup.get().strip()
-        quantity = self.inStock.get().strip()
-        suplier = self.itemSuplier.get().strip()
-        price = self.price.get().strip()
-        Pvn = self.pvn.get().strip()
-    
-        try:
-            fields = {'FullName': title, 'ItemGroup': description, 'InStock': quantity, 'ItemSuplier': suplier, 'Price': price}
-            missing = [name for name, value in fields.items() if not value]
-            if missing:
-                if len(missing) == 1:
-                    messagebox.showwarning("Warning", f"{missing[0]} is required!")
-                else:
-                    messagebox.showwarning("Warning", "The following fields are required:\n• " + "\n• ".join(missing))
-                return
+        # Check numeric fields
+        numeric_fields = {'InStock': fields['InStock'], 'Price': fields['Price']}
+        invalid = [name for name, value in numeric_fields.items() 
+                  if not value.replace('.', '', 1).isdigit()]
+        
+        if invalid:
+            messagebox.showwarning("Validation Error", 
+                                  f"Non-numeric values in:\n• " + "\n• ".join(invalid))
+            return False
 
-            fields2 = {'Quantity': quantity, 'Price': price}
-            notNumerical = [name for name, value in fields2.items() 
-                            if not str(value).isdigit()]
-            if notNumerical:
-                if len(notNumerical) == 1:
-                    messagebox.showwarning("Warning", f"{notNumerical[0]} must be numeric!")
-                else:
-                    messagebox.showwarning("Warning", "The following fields are non-numeric:\n• " + "\n• ".join(notNumerical))
-                return
+        # Check PVN selection
+        if self.pvn.get() in ["Select PVN", ""] or self.pvn.get() not in self.pvn_values:
+            messagebox.showwarning("Validation Error", "Please select a valid PVN!")
+            return False
+        
+        # For updates, check if task is selected
+        if for_update and self.selected_id is None:
+            messagebox.showwarning("Validation Error", "Please select a task to update!")
+            return False
+        
+        return True
 
-            if Pvn == "Select the PVN" or not Pvn:
-                messagebox.showwarning("Warning", "Please select a valid PVN!")
-                return
-            
-            if action_function == self.update_task and not hasattr(self, 'selected_id'):
-                messagebox.showwarning("Warning", "Please select a task to update!")
-                return
-            
-            return action_function()
-            
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-            
+    def handle_submit(self):
+        """Handle task submission."""
+        if not self.validate_inputs():
+            return
+        self.add_task()
+
+    def handle_update(self):
+        """Handle task update."""
+        if not self.validate_inputs(for_update=True):
+            return
+        self.update_task()
+
     def add_task(self):
-        title = self.fullName.get().strip()
-        description = self.itemGroup.get().strip()
-        quantity = self.inStock.get().strip()
-        suplier = self.itemSuplier.get().strip()
-        price = self.price.get().strip()
-        Pvn = self.pvn.get().strip()
-        barcode = self.barcode.get().strip()
+        """Add a new task to the database."""
+        try:
+            title = self.fullName.get().strip()
+            description = self.itemGroup.get().strip()
+            quantity = int(self.inStock.get().strip())
+            suplier = self.itemSuplier.get().strip()
+            price = float(self.price.get().strip())
+            pvn = self.pvn.get().strip()
+            barcode = self.barcode.get().strip() or f"{random.randint(0, 9999999999999):013}"
 
-        if not barcode:
-            numbers = random.randint(0, 9999999999999)
-            num = f"{numbers:013}"
-        else:
-            num = barcode
-
-        self.cursor.execute("SELECT id FROM tasks ORDER BY id")
-        existing_ids = [row[0] for row in self.cursor.fetchall()]
-        next_id = 1
-        for existing_id in existing_ids:
-            if next_id < existing_id:
-                break
-            next_id = existing_id + 1
-
-        self.cursor.execute("INSERT INTO price (task_id, price) VALUES (?, ?)", (next_id, price))
-        price_id = self.cursor.lastrowid
-        
-        self.cursor.execute("INSERT INTO PVN (price_id, pvn) VALUES (?, ?)", (price_id, Pvn))
-        pvn_id = self.cursor.lastrowid
-
-        self.cursor.execute(
-            "INSERT INTO tasks (id, FullName, ItemGroup, ItemSuplier, InStock, pvn_id) VALUES (?, ?, ?, ?, ?, ?)",
-            (next_id, title, description, suplier, quantity, pvn_id)
-        )
-
-        self.cursor.execute(
-            "INSERT INTO barcode (task_id, barcode) VALUES (?, ?)",
-            (next_id, num)
-        )
-
-        self.conn.commit()
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get next available ID
+                cursor.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM tasks")
+                next_id = cursor.fetchone()[0]
+                
+                # Insert price
+                cursor.execute("INSERT INTO price (task_id, price) VALUES (?, ?)", 
+                              (next_id, price))
+                price_id = cursor.lastrowid
+                
+                # Insert PVN
+                cursor.execute("INSERT INTO PVN (price_id, pvn) VALUES (?, ?)", 
+                              (price_id, pvn))
+                pvn_id = cursor.lastrowid
+                
+                # Insert task
+                cursor.execute(
+                    "INSERT INTO tasks (id, FullName, ItemGroup, ItemSuplier, InStock, pvn_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (next_id, title, description, suplier, quantity, pvn_id)
+                )
+                
+                # Insert barcode
+                cursor.execute("INSERT INTO barcode (task_id, barcode) VALUES (?, ?)",
+                              (next_id, barcode))
+                
+                conn.commit()
             
-        self.fullName.delete(0, tk.END)
-        self.itemGroup.delete(0, tk.END)
-        self.inStock.delete(0, tk.END)
-        self.itemSuplier.delete(0, tk.END)
-        self.pvn.set("Select the PVN")
-        self.price.delete(0, tk.END)
-        self.barcode.delete(0, tk.END)
-        
-        self.load_tasks()
-        messagebox.showinfo("Success", "Task added!")
+            self.clear_selection()
+            self.load_tasks()
+            self.update_status(f"Task '{title}' added successfully")
+            messagebox.showinfo("Success", "Task added successfully!")
+            
+        except sqlite3.IntegrityError as e:
+            messagebox.showerror("Error", f"Barcode already exists: {e}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to add task: {e}")
 
     def load_tasks(self):
-        for row in self.tree.get_children():
-            self.tree.delete(row)
-        self.cursor.execute("SELECT * FROM tasks")
-        for row in self.cursor.fetchall():
-            self.tree.insert("", tk.END, values=row)
-    
+        """Load all tasks from database into treeview."""
+        try:
+            for row in self.tree.get_children():
+                self.tree.delete(row)
+            
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM tasks ORDER BY id DESC")
+                tasks = cursor.fetchall()
+                
+                for row in tasks:
+                    # Color-code completed tasks
+                    tag = 'completed' if row[4] == 'completed' else ''
+                    self.tree.insert("", tk.END, values=row, tags=(tag,))
+                
+                self.tree.tag_configure('completed', background='#d4edda')
+                
+                self.update_status(f"Loaded {len(tasks)} tasks")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load tasks: {e}")
+
     def on_item_select(self, event):
-        item_id = self.tree.focus()
-        item = self.tree.item(item_id)
+        """Handle task selection in treeview."""
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        item = self.tree.item(selection[0])
         values = item['values']
         if not values:
             return
 
         task_id = values[0]
-        
-        self.fullName.delete(0, tk.END)
-        self.fullName.insert(0, str(values[1]))
-        self.itemGroup.delete(0, tk.END)
-        self.itemGroup.insert(0, str(values[2]))
-        self.itemSuplier.delete(0, tk.END)
-        self.itemSuplier.insert(0, str(values[3]))
-        self.inStock.delete(0, tk.END)
-        self.inStock.insert(0, str(values[6]))
-        
-        self.cursor.execute("SELECT id, price FROM price WHERE task_id = ?", (task_id,))
-        price_result = self.cursor.fetchone()
-        self.price.delete(0, tk.END)
-        if price_result:
-            self.price.insert(0, str(int(float(price_result[1]))))
-        else:
-            self.price.insert(0, "")
-
-        if price_result:
-            price_id = price_result[0]
-            self.cursor.execute("SELECT pvn FROM PVN WHERE price_id = ?", (price_id,))
-            pvn_result = self.cursor.fetchone()
-
-        else:
-            pvn_result = None
-            
-        self.pvn.set("")
-        if pvn_result:
-            pvn_str = str(pvn_result[0]).strip()
-            matching_value = None
-            for pv in pvn_values:
-                if pvn_str in pv or pv.startswith(pvn_str):
-                    matching_value = pv
-                    break
-            if matching_value:
-                self.pvn.set(matching_value)
-            else:
-                self.pvn.set(pvn_str)
-
-        self.cursor.execute("SELECT barcode FROM barcode WHERE task_id = ?", (task_id,))
-        barcode_result = self.cursor.fetchone()
-        self.barcode.delete(0, tk.END)
-        if barcode_result:
-            self.barcode.insert(0, str(barcode_result[0]))
-        else:
-            self.barcode.insert(0, "")
-
         self.selected_id = task_id
+        
+        try:
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Load task details
+                self.fullName.delete(0, tk.END)
+                self.fullName.insert(0, str(values[1]))
+                self.itemGroup.delete(0, tk.END)
+                self.itemGroup.insert(0, str(values[2]))
+                self.itemSuplier.delete(0, tk.END)
+                self.itemSuplier.insert(0, str(values[3]))
+                self.inStock.delete(0, tk.END)
+                self.inStock.insert(0, str(values[6]))
+                
+                # Load price
+                cursor.execute("SELECT price FROM price WHERE task_id = ?", (task_id,))
+                price_result = cursor.fetchone()
+                self.price.delete(0, tk.END)
+                if price_result:
+                    self.price.insert(0, str(float(price_result[0])))
+                
+                # Load PVN
+                cursor.execute("""
+                    SELECT pvn FROM PVN 
+                    WHERE price_id IN (SELECT id FROM price WHERE task_id = ?)
+                """, (task_id,))
+                pvn_result = cursor.fetchone()
+                if pvn_result:
+                    self.pvn.set(str(pvn_result[0]))
+                
+                # Load barcode
+                cursor.execute("SELECT barcode FROM barcode WHERE task_id = ?", (task_id,))
+                barcode_result = cursor.fetchone()
+                self.barcode.delete(0, tk.END)
+                if barcode_result:
+                    self.barcode.insert(0, str(barcode_result[0]))
+                
+                self.update_status(f"Selected task ID: {task_id}")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load task details: {e}")
 
     def update_task(self):
-        task_id = self.selected_id
-        title = self.fullName.get().strip()
-        description = self.itemGroup.get().strip()
-        quantity = self.inStock.get().strip()
-        suplier = self.itemSuplier.get().strip()
-        price = self.price.get().strip()
-        pvn = self.pvn.get().strip()
-        barcode = self.barcode.get().strip()
+        """Update selected task in database."""
+        if self.selected_id is None:
+            return
+        
+        try:
+            task_id = self.selected_id
+            title = self.fullName.get().strip()
+            description = self.itemGroup.get().strip()
+            quantity = int(self.inStock.get().strip())
+            suplier = self.itemSuplier.get().strip()
+            price = float(self.price.get().strip())
+            pvn = self.pvn.get().strip()
+            barcode = self.barcode.get().strip()
 
-        self.cursor.execute(
-            "UPDATE tasks SET FullName = ?, ItemGroup = ?, ItemSuplier = ?, InStock = ? WHERE id = ?",
-            (title, description, suplier, quantity, task_id)
-        )
-
-        self.cursor.execute("UPDATE price SET price = ? WHERE task_id = ?", (price, task_id))
-
-        self.cursor.execute("""
-            UPDATE PVN SET pvn = ? 
-            WHERE price_id IN (SELECT id FROM price WHERE task_id = ?)
-        """, (pvn, task_id))
-
-        if barcode:
-            self.cursor.execute("UPDATE barcode SET barcode = ? WHERE task_id = ?", (barcode, task_id))
-
-        self.conn.commit()
-        self.load_tasks()
-        messagebox.showinfo("Success", "Task updated successfully!")
-        del self.selected_id
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Update task
+                cursor.execute(
+                    "UPDATE tasks SET FullName = ?, ItemGroup = ?, ItemSuplier = ?, InStock = ? "
+                    "WHERE id = ?",
+                    (title, description, suplier, quantity, task_id)
+                )
+                
+                # Update price
+                cursor.execute("UPDATE price SET price = ? WHERE task_id = ?", 
+                              (price, task_id))
+                
+                # Update PVN
+                cursor.execute("""
+                    UPDATE PVN SET pvn = ? 
+                    WHERE price_id IN (SELECT id FROM price WHERE task_id = ?)
+                """, (pvn, task_id))
+                
+                # Update barcode if provided
+                if barcode:
+                    cursor.execute("UPDATE barcode SET barcode = ? WHERE task_id = ?", 
+                                  (barcode, task_id))
+                
+                conn.commit()
+            
+            self.load_tasks()
+            self.update_status(f"Task '{title}' updated successfully")
+            messagebox.showinfo("Success", "Task updated successfully!")
+            self.selected_id = None
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update task: {e}")
 
     def delete_task(self):
-        if not hasattr(self, 'selected_id'):
+        """Delete selected task from database."""
+        if self.selected_id is None:
             messagebox.showwarning("Warning", "Please select a task to delete!")
             return
+        
+        if not messagebox.askyesno("Confirm Delete", 
+                                   "Are you sure you want to delete this task?"):
+            return
+        
+        try:
+            task_id = self.selected_id
             
-        task_id = self.selected_id
-        self.cursor.execute("DELETE FROM barcode WHERE task_id = ?", (task_id,))
-        self.cursor.execute("DELETE FROM price WHERE task_id = ?", (task_id,))
-        self.cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-        self.conn.commit()
-        self.load_tasks()
-        messagebox.showinfo("Success", "Task deleted successfully!")
-        del self.selected_id
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get task name for status message
+                cursor.execute("SELECT FullName FROM tasks WHERE id = ?", (task_id,))
+                task_name = cursor.fetchone()[0]
+                
+                # Delete task (cascading will handle related records)
+                cursor.execute("DELETE FROM barcode WHERE task_id = ?", (task_id,))
+                cursor.execute("DELETE FROM price WHERE task_id = ?", (task_id,))
+                cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+                
+                conn.commit()
+            
+            self.clear_selection()
+            self.load_tasks()
+            self.update_status(f"Task '{task_name}' deleted")
+            messagebox.showinfo("Success", "Task deleted successfully!")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete task: {e}")
 
     def mark_complete(self):
-        if not hasattr(self, 'selected_id'):
+        """Mark selected task as completed."""
+        if self.selected_id is None:
             messagebox.showwarning("Warning", "Please select a task to mark as complete!")
             return
+        
+        try:
+            task_id = self.selected_id
             
-        task_id = self.selected_id
-        self.cursor.execute("UPDATE tasks SET ItemStatus = ? WHERE id = ?", ("completed", task_id))
-        self.conn.commit()
-        self.load_tasks()
-        messagebox.showinfo("Success", "Task completed successfully!")
-        del self.selected_id
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE tasks SET ItemStatus = ? WHERE id = ?", 
+                              ("completed", task_id))
+                conn.commit()
+            
+            self.load_tasks()
+            self.update_status("Task marked as completed")
+            messagebox.showinfo("Success", "Task marked as completed!")
+            self.selected_id = None
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to mark task as complete: {e}")
 
     def search_for_tasks(self):
-        value = self.searchQuery.get().strip()
+        """Search for tasks based on selected criteria."""
         query_type = self.query.get().strip()
-        if query_type == "by id":
-            sql = "SELECT * FROM tasks WHERE id = ?"
-            value = (value,)
-        elif query_type == "by FullName":
-            sql = "SELECT * FROM tasks WHERE FullName LIKE ?"
-            value = ('%' + value + '%',)
-        elif query_type == "by ItemGroup":
-            sql = "SELECT * FROM tasks WHERE ItemGroup LIKE ?"
-            value = ('%' + value + '%',)
-        elif query_type == "by ItemSuplier":
-            sql = "SELECT * FROM tasks WHERE ItemSuplier LIKE ?"
-            value = ('%' + value + '%',)
-        elif query_type == "by ItemStatus":
-            sql = "SELECT * FROM tasks WHERE ItemStatus = ?"
-            value = (value,)
-        elif query_type == "by DateCreated":
-            sql = "SELECT * FROM tasks WHERE DateCreated = ?"
-            value = (value,)
-        elif query_type == "by InStock":
-            sql = "SELECT * FROM tasks WHERE InStock LIKE ?"
-            value = ('%' + value + '%',)
-        elif query_type == "All":
-            sql = "SELECT * FROM tasks"
-            value = ()
-        else:
-            return
-
-        self.cursor.execute(sql, value)
-        rows = self.cursor.fetchall()
-        for row in self.tree.get_children():
-            self.tree.delete(row)
-        for row in rows:
-            self.tree.insert("", tk.END, values=row)
+        search_term = self.searchQuery.get().strip()
         
+        try:
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                query_map = {
+                    "by id": ("SELECT * FROM tasks WHERE id = ?", (search_term,)),
+                    "by FullName": ("SELECT * FROM tasks WHERE FullName LIKE ?", (f'%{search_term}%',)),
+                    "by ItemGroup": ("SELECT * FROM tasks WHERE ItemGroup LIKE ?", (f'%{search_term}%',)),
+                    "by ItemSuplier": ("SELECT * FROM tasks WHERE ItemSuplier LIKE ?", (f'%{search_term}%',)),
+                    "by ItemStatus": ("SELECT * FROM tasks WHERE ItemStatus = ?", (search_term,)),
+                    "by DateCreated": ("SELECT * FROM tasks WHERE DATE(DateCreated) = ?", (search_term,)),
+                    "by InStock": ("SELECT * FROM tasks WHERE InStock = ?", (search_term,)),
+                    "All": ("SELECT * FROM tasks ORDER BY id DESC", ())
+                }
+                
+                if query_type not in query_map:
+                    messagebox.showwarning("Warning", "Please select a valid search query!")
+                    return
+                
+                sql, params = query_map[query_type]
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+                
+                # Update treeview
+                for row in self.tree.get_children():
+                    self.tree.delete(row)
+                
+                for row in rows:
+                    tag = 'completed' if row[4] == 'completed' else ''
+                    self.tree.insert("", tk.END, values=row, tags=(tag,))
+                
+                self.tree.tag_configure('completed', background='#d4edda')
+                self.update_status(f"Found {len(rows)} tasks")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Search failed: {e}")
+
+    def update_status(self, message: str):
+        """Update status bar message."""
+        self.status_label.config(text=message)
+
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = TaskApp(root)
