@@ -8,14 +8,12 @@ from typing import Optional, List, Tuple
 from contextlib import contextmanager
 
 class Database:
-    """Handles all database operations with proper connection management."""
     
     def __init__(self, db_path: str = './Database/tasks.db'):
         self.db_path = db_path
         self._ensure_database_exists()
         
     def _ensure_database_exists(self):
-        """Create database directory and initialize tables if needed."""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -24,7 +22,6 @@ class Database:
     
     @contextmanager
     def get_connection(self):
-        """Context manager for database connections."""
         conn = sqlite3.connect(self.db_path)
         try:
             yield conn
@@ -32,7 +29,6 @@ class Database:
             conn.close()
     
     def _create_tables(self, cursor):
-        """Create all necessary database tables."""
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,17 +72,15 @@ class Database:
             )
         ''')
         
-        # Create indexes for better performance
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_task_status ON tasks(ItemStatus)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_barcode ON barcode(barcode)')
 
 class TaskApp:
-    """Main application class for the Task Manager."""
     
     def __init__(self, root):
         self.root = root
-        self.root.title("Task Manager Pro")
-        self.root.geometry("1250x450")
+        self.root.title("Test")
+        self.root.geometry("1600x600")
         self.root.resizable(True, True)
         
         # Initialize database
@@ -95,8 +89,9 @@ class TaskApp:
         # Load PVN values
         self.pvn_values = self._load_pvn_values()
         
-        # Track selected task
+        # Track selected task and mode
         self.selected_id: Optional[int] = None
+        self.edit_mode: bool = False
         
         # Create GUI
         self.create_widgets()
@@ -116,8 +111,6 @@ class TaskApp:
             return ["0%", "5%", "12%", "21%"]
 
     def create_widgets(self):
-        """Create all GUI widgets."""
-        # Configure grid weights for responsive layout
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(1, weight=1)
         
@@ -126,14 +119,22 @@ class TaskApp:
         self._create_tree_frame()
 
     def _create_input_frame(self):
-        """Create the input frame with all entry fields."""
         input_frame = tk.LabelFrame(self.root, text=" Task Input ", padx=10, pady=10)
         input_frame.grid(row=0, column=0, padx=10, pady=10, sticky="n")
+
+        mode_frame = tk.Frame(input_frame, relief=tk.RIDGE, borderwidth=2)
+        mode_frame.grid(row=0, column=0, columnspan=2, pady=(0, 10), sticky="ew")
+        
+        self.mode_label = tk.Label(mode_frame, text="ADD MODE", pady=5)
+        self.mode_label.pack(fill=tk.BOTH, expand=True)
+        
+        self.mode_button = tk.Button(mode_frame, text="Switch to Edit Mode", command=self.toggle_mode, pady=3)
+        self.mode_button.pack(fill=tk.BOTH, expand=True, pady=(2, 0))
 
         # Labels
         labels = ["FullName", "ItemGroup", "InStock", "ItemSuplier", "PVN", "Price", "Barcode (Optional)"]
         for i, label in enumerate(labels):
-            tk.Label(input_frame, text=label).grid(row=i, column=0, padx=5, pady=5, sticky="w")
+            tk.Label(input_frame, text=label).grid(row=i+1, column=0, padx=5, pady=5, sticky="w")
 
         # Entry fields
         self.fullName = tk.Entry(input_frame, width=25)
@@ -148,28 +149,32 @@ class TaskApp:
         entries = [self.fullName, self.itemGroup, self.inStock, self.itemSuplier, 
                    self.pvn, self.price, self.barcode]
         for i, entry in enumerate(entries):
-            entry.grid(row=i, column=1, padx=5, pady=5, sticky="w")
+            entry.grid(row=i+1, column=1, padx=5, pady=5, sticky="w")
 
         # Buttons
         button_frame = tk.Frame(input_frame)
-        button_frame.grid(row=7, column=0, columnspan=2, pady=(15, 0))
+        button_frame.grid(row=8, column=0, columnspan=2, pady=(15, 0))
+        
+        # Main action button (changes based on mode)
+        self.action_button = tk.Button(button_frame, text="Add Task", command=self.handle_action, 
+                                       activebackground="blue", activeforeground="white", width=12)
+        self.action_button.grid(row=0, column=0, columnspan=2, padx=3, pady=3)
         
         buttons = [
-            ("Submit", self.handle_submit, 0, 0, 10),
-            ("Update", self.handle_update, 0, 1, 10),
             ("Complete", self.mark_complete, 1, 0, 12),
             ("Delete", self.delete_task, 1, 1, 12),
-            ("Clear", self.clear_selection, 2, 0, 10),
-            ("Refresh", self.load_tasks, 2, 1, 10)
+            ("Clear", self.clear_selection, 2, 0, 12),
+            ("Refresh", self.load_tasks, 2, 1, 12)
         ]
         
         for text, command, row, col, width in buttons:
             btn = tk.Button(button_frame, text=text, command=command,
                            activebackground="blue", activeforeground="white", width=width)
             btn.grid(row=row, column=col, padx=3, pady=3)
+            
+            self.update_mode_ui()
 
     def _create_search_frame(self):
-        """Create the search frame."""
         search_frame = tk.LabelFrame(self.root, text=" Search ", padx=10, pady=5)
         search_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="ew")
         
@@ -193,7 +198,6 @@ class TaskApp:
                  ).grid(row=0, column=4, padx=5, pady=5)
 
     def _create_tree_frame(self):
-        """Create the treeview frame with scrollbar."""
         tree_frame = tk.LabelFrame(self.root, text=" Task List ", padx=10, pady=10)
         tree_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
         tree_frame.grid_rowconfigure(0, weight=1)
@@ -227,12 +231,12 @@ class TaskApp:
         self.status_label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(5, 0))
 
     def setup_keyboard_bindings(self):
-        """Setup keyboard shortcuts and navigation."""
         self.root.bind('<Escape>', lambda e: self.clear_selection())
-        self.root.bind('<Control-s>', lambda e: self.handle_submit())
+        self.root.bind('<Control-s>', lambda e: self.handle_action())
         self.root.bind('<Control-d>', lambda e: self.delete_task())
         self.root.bind('<Delete>', lambda e: self.delete_task())
         self.root.bind('<F5>', lambda e: self.load_tasks())
+        self.root.bind('<Control-m>', lambda e: self.toggle_mode())
         
         # Enter key navigation between fields
         fields = [self.fullName, self.itemGroup, self.inStock, self.itemSuplier, 
@@ -241,7 +245,7 @@ class TaskApp:
         for i, field in enumerate(fields[:-1]):
             field.bind('<Return>', lambda e, next_field=fields[i+1]: next_field.focus())
         
-        fields[-1].bind('<Return>', lambda e: self.handle_submit())
+        fields[-1].bind('<Return>', lambda e: self.handle_action())
 
     def clear_selection(self):
         """Clear all selections and input fields."""
@@ -253,10 +257,42 @@ class TaskApp:
         
         self.pvn.set("Select PVN")
         self.selected_id = None
+
+        if self.edit_mode:
+            self.edit_mode = False
+            self.update_mode_ui()
+        
         self.update_status("Selection cleared")
 
+    def toggle_mode(self):
+        self.edit_mode = not self.edit_mode
+        self.update_mode_ui()
+        
+        if self.edit_mode and self.selected_id is None:
+            self.update_status("Edit mode: Select a task to edit")
+        elif not self.edit_mode:
+            self.clear_selection()
+            self.update_status("Switched to Add mode")
+        else:
+            self.update_status("Edit mode activated")
+
+    def update_mode_ui(self):
+        if self.edit_mode:
+            self.mode_label.config(text="EDIT MODE")
+            self.mode_button.config(text="Switch to Add Mode")
+            self.action_button.config(text="Update Task")
+        else:
+            self.mode_label.config(text="ADD MODE")
+            self.mode_button.config(text="Switch to Edit Mode")
+            self.action_button.config(text="Add Task")
+
+    def handle_action(self):
+        if self.edit_mode:
+            self.handle_update()
+        else:
+            self.handle_submit()
+
     def validate_inputs(self, for_update: bool = False) -> bool:
-        """Validate all input fields."""
         # Check required fields
         fields = {
             'FullName': self.fullName.get().strip(),
@@ -295,19 +331,16 @@ class TaskApp:
         return True
 
     def handle_submit(self):
-        """Handle task submission."""
         if not self.validate_inputs():
             return
         self.add_task()
 
     def handle_update(self):
-        """Handle task update."""
         if not self.validate_inputs(for_update=True):
             return
         self.update_task()
 
     def add_task(self):
-        """Add a new task to the database."""
         try:
             title = self.fullName.get().strip()
             description = self.itemGroup.get().strip()
@@ -358,7 +391,6 @@ class TaskApp:
             messagebox.showerror("Error", f"Failed to add task: {e}")
 
     def load_tasks(self):
-        """Load all tasks from database into treeview."""
         try:
             for row in self.tree.get_children():
                 self.tree.delete(row)
@@ -381,7 +413,6 @@ class TaskApp:
             messagebox.showerror("Error", f"Failed to load tasks: {e}")
 
     def on_item_select(self, event):
-        """Handle task selection in treeview."""
         selection = self.tree.selection()
         if not selection:
             return
@@ -393,6 +424,10 @@ class TaskApp:
 
         task_id = values[0]
         self.selected_id = task_id
+        
+        if not self.edit_mode:
+            self.edit_mode = True
+            self.update_mode_ui()
         
         try:
             with self.db.get_connection() as conn:
@@ -431,13 +466,12 @@ class TaskApp:
                 if barcode_result:
                     self.barcode.insert(0, str(barcode_result[0]))
                 
-                self.update_status(f"Selected task ID: {task_id}")
+                self.update_status(f"Editing task ID: {task_id}")
                 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load task details: {e}")
 
     def update_task(self):
-        """Update selected task in database."""
         if self.selected_id is None:
             return
         
@@ -481,7 +515,9 @@ class TaskApp:
             self.load_tasks()
             self.update_status(f"Task '{title}' updated successfully")
             messagebox.showinfo("Success", "Task updated successfully!")
-            self.selected_id = None
+            
+            # Clear and switch back to add mode after update
+            self.clear_selection()
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update task: {e}")
