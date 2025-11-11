@@ -80,7 +80,7 @@ class TaskApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Test")
-        self.root.geometry("1600x600")
+        self.root.geometry("1920x700")
         self.root.resizable(True, True)
         
         # Initialize database
@@ -164,15 +164,19 @@ class TaskApp:
             ("Complete", self.mark_complete, 1, 0, 12),
             ("Delete", self.delete_task, 1, 1, 12),
             ("Clear", self.clear_selection, 2, 0, 12),
-            ("Refresh", self.load_tasks, 2, 1, 12)
+            ("Refresh", self.load_tasks, 2, 1, 12),
+            ("Export CSV", self.export_to_csv, 3, 0, 25)
         ]
         
         for text, command, row, col, width in buttons:
             btn = tk.Button(button_frame, text=text, command=command,
                            activebackground="blue", activeforeground="white", width=width)
-            btn.grid(row=row, column=col, padx=3, pady=3)
+            if width == 25:  # Export button spans both columns
+                btn.grid(row=row, column=col, columnspan=2, padx=3, pady=3)
+            else:
+                btn.grid(row=row, column=col, padx=3, pady=3)
             
-            self.update_mode_ui()
+        self.update_mode_ui()
 
     def _create_search_frame(self):
         search_frame = tk.LabelFrame(self.root, text=" Search ", padx=10, pady=5)
@@ -207,20 +211,32 @@ class TaskApp:
         scrollbar = ttk.Scrollbar(tree_frame, orient="vertical")
         scrollbar.grid(row=0, column=1, sticky="ns")
 
-        # Treeview
-        columns = ("id", "FullName", "ItemGroup", "ItemSuplier", "ItemStatus", "DateCreated", "InStock")
+        # Treeview - expanded columns
+        columns = ("id", "FullName", "ItemGroup", "ItemSuplier", "ItemStatus", 
+                   "DateCreated", "InStock", "Barcode", "Price", "PVN")
         self.tree = ttk.Treeview(tree_frame, columns=columns, selectmode=tk.EXTENDED, 
                                  show="headings", height=15, yscrollcommand=scrollbar.set)
         
         scrollbar.config(command=self.tree.yview)
         
-        # Configure columns
-        column_widths = {"id": 50, "FullName": 180, "ItemGroup": 120, "ItemSuplier": 120, 
-                        "ItemStatus": 90, "DateCreated": 150, "InStock": 80}
+        # Configure columns with appropriate widths
+        column_config = {
+            "id": (50, "ID"),
+            "FullName": (200, "Full Name"),
+            "ItemGroup": (130, "Item Group"),
+            "ItemSuplier": (130, "Supplier"),
+            "ItemStatus": (90, "Status"),
+            "DateCreated": (150, "Date Created"),
+            "InStock": (80, "In Stock"),
+            "Barcode": (140, "Barcode"),
+            "Price": (80, "Price"),
+            "PVN": (60, "PVN")
+        }
         
         for col in columns:
-            self.tree.heading(col, text=col.capitalize())
-            self.tree.column(col, width=column_widths.get(col, 100))
+            width, heading = column_config.get(col, (100, col.capitalize()))
+            self.tree.heading(col, text=heading)
+            self.tree.column(col, width=width)
         
         self.tree.grid(row=0, column=0, sticky="nsew")
         self.tree.bind('<ButtonRelease-1>', self.on_item_select)
@@ -397,7 +413,24 @@ class TaskApp:
             
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM tasks ORDER BY id DESC")
+                cursor.execute("""
+                    SELECT 
+                        t.id,
+                        t.FullName,
+                        t.ItemGroup,
+                        t.ItemSuplier,
+                        t.ItemStatus,
+                        t.DateCreated,
+                        t.InStock,
+                        COALESCE(b.barcode, ''),
+                        COALESCE(p.price, 0),
+                        COALESCE(pvn.pvn, '')
+                    FROM tasks t
+                    LEFT JOIN barcode b ON t.id = b.task_id
+                    LEFT JOIN price p ON t.id = p.task_id
+                    LEFT JOIN PVN pvn ON t.pvn_id = pvn.id
+                    ORDER BY t.id DESC
+                """)
                 tasks = cursor.fetchall()
                 
                 for row in tasks:
@@ -430,43 +463,21 @@ class TaskApp:
             self.update_mode_ui()
         
         try:
-            with self.db.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Load task details
-                self.fullName.delete(0, tk.END)
-                self.fullName.insert(0, str(values[1]))
-                self.itemGroup.delete(0, tk.END)
-                self.itemGroup.insert(0, str(values[2]))
-                self.itemSuplier.delete(0, tk.END)
-                self.itemSuplier.insert(0, str(values[3]))
-                self.inStock.delete(0, tk.END)
-                self.inStock.insert(0, str(values[6]))
-                
-                # Load price
-                cursor.execute("SELECT price FROM price WHERE task_id = ?", (task_id,))
-                price_result = cursor.fetchone()
-                self.price.delete(0, tk.END)
-                if price_result:
-                    self.price.insert(0, str(float(price_result[0])))
-                
-                # Load PVN
-                cursor.execute("""
-                    SELECT pvn FROM PVN 
-                    WHERE price_id IN (SELECT id FROM price WHERE task_id = ?)
-                """, (task_id,))
-                pvn_result = cursor.fetchone()
-                if pvn_result:
-                    self.pvn.set(str(pvn_result[0]))
-                
-                # Load barcode
-                cursor.execute("SELECT barcode FROM barcode WHERE task_id = ?", (task_id,))
-                barcode_result = cursor.fetchone()
-                self.barcode.delete(0, tk.END)
-                if barcode_result:
-                    self.barcode.insert(0, str(barcode_result[0]))
-                
-                self.update_status(f"Editing task ID: {task_id}")
+            self.fullName.delete(0, tk.END)
+            self.fullName.insert(0, str(values[1]))
+            self.itemGroup.delete(0, tk.END)
+            self.itemGroup.insert(0, str(values[2]))
+            self.itemSuplier.delete(0, tk.END)
+            self.itemSuplier.insert(0, str(values[3]))
+            self.inStock.delete(0, tk.END)
+            self.inStock.insert(0, str(values[6]))
+            self.barcode.delete(0, tk.END)
+            self.barcode.insert(0, str(values[7]))
+            self.price.delete(0, tk.END)
+            self.price.insert(0, str(values[8]))
+            self.pvn.set(str(values[9]))
+            
+            self.update_status(f"Editing task ID: {task_id}")
                 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load task details: {e}")
@@ -589,15 +600,33 @@ class TaskApp:
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 
+                base_select = """
+                    SELECT 
+                        t.id,
+                        t.FullName,
+                        t.ItemGroup,
+                        t.ItemSuplier,
+                        t.ItemStatus,
+                        t.DateCreated,
+                        t.InStock,
+                        COALESCE(b.barcode, ''),
+                        COALESCE(p.price, 0),
+                        COALESCE(pvn.pvn, '')
+                    FROM tasks t
+                    LEFT JOIN barcode b ON t.id = b.task_id
+                    LEFT JOIN price p ON t.id = p.task_id
+                    LEFT JOIN PVN pvn ON t.pvn_id = pvn.id
+                """
+                
                 query_map = {
-                    "by id": ("SELECT * FROM tasks WHERE id = ?", (search_term,)),
-                    "by FullName": ("SELECT * FROM tasks WHERE FullName LIKE ?", (f'%{search_term}%',)),
-                    "by ItemGroup": ("SELECT * FROM tasks WHERE ItemGroup LIKE ?", (f'%{search_term}%',)),
-                    "by ItemSuplier": ("SELECT * FROM tasks WHERE ItemSuplier LIKE ?", (f'%{search_term}%',)),
-                    "by ItemStatus": ("SELECT * FROM tasks WHERE ItemStatus = ?", (search_term,)),
-                    "by DateCreated": ("SELECT * FROM tasks WHERE DATE(DateCreated) = ?", (search_term,)),
-                    "by InStock": ("SELECT * FROM tasks WHERE InStock = ?", (search_term,)),
-                    "All": ("SELECT * FROM tasks ORDER BY id DESC", ())
+                    "by id": (f"{base_select} WHERE t.id = ?", (search_term,)),
+                    "by FullName": (f"{base_select} WHERE t.FullName LIKE ?", (f'%{search_term}%',)),
+                    "by ItemGroup": (f"{base_select} WHERE t.ItemGroup LIKE ?", (f'%{search_term}%',)),
+                    "by ItemSuplier": (f"{base_select} WHERE t.ItemSuplier LIKE ?", (f'%{search_term}%',)),
+                    "by ItemStatus": (f"{base_select} WHERE t.ItemStatus = ?", (search_term,)),
+                    "by DateCreated": (f"{base_select} WHERE DATE(t.DateCreated) = ?", (search_term,)),
+                    "by InStock": (f"{base_select} WHERE t.InStock = ?", (search_term,)),
+                    "All": (f"{base_select} ORDER BY t.id DESC", ())
                 }
                 
                 if query_type not in query_map:
@@ -625,6 +654,40 @@ class TaskApp:
     def update_status(self, message: str):
         """Update status bar message."""
         self.status_label.config(text=message)
+    
+    def export_to_csv(self):
+        try:
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    SELECT 
+                        t.FullName,
+                        b.barcode,
+                        p.price,
+                        pvn.pvn
+                    FROM tasks t
+                    LEFT JOIN barcode b ON t.id = b.task_id
+                    LEFT JOIN price p ON t.id = p.task_id
+                    LEFT JOIN PVN pvn ON t.pvn_id = pvn.id
+                    ORDER BY t.id DESC
+                """)
+                
+                rows = cursor.fetchall()
+                
+                if not rows:
+                    messagebox.showinfo("Info", "No data to export!")
+                    return
+                
+                df = pd.DataFrame(rows, columns=['FullName', 'Barcode', 'Price', 'PVN'])
+                csv_path = "./CSV/export.csv"
+                df.to_csv(csv_path, index=False)
+                
+                self.update_status(f"Exported {len(rows)} records to {csv_path}")
+                messagebox.showinfo("Success", f"Data exported successfully to:\n{csv_path}")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export data: {e}")
 
 
 if __name__ == "__main__":
