@@ -131,13 +131,14 @@ class TaskApp:
         self.mode_button = tk.Button(mode_frame, text="Switch to Edit Mode", command=self.toggle_mode, pady=3)
         self.mode_button.pack(fill=tk.BOTH, expand=True, pady=(2, 0))
 
-        # Labels
-        labels = ["FullName", "ItemGroup", "InStock", "ItemSuplier", "PVN", "Price", "Barcode (Optional)"]
+        # Labels with character counter for FullName
+        labels = ["FullName (max 25)", "ItemGroup", "InStock", "ItemSuplier", "PVN", "Price", "Barcode (Optional)"]
         for i, label in enumerate(labels):
             tk.Label(input_frame, text=label).grid(row=i+1, column=0, padx=5, pady=5, sticky="w")
 
         # Entry fields
         self.fullName = tk.Entry(input_frame, width=25)
+        self.fullName.bind('<KeyRelease>', self._check_fullname_length)
         self.itemGroup = tk.Entry(input_frame, width=25)
         self.inStock = tk.Entry(input_frame, width=25)
         self.itemSuplier = tk.Entry(input_frame, width=25)
@@ -245,6 +246,13 @@ class TaskApp:
         # Status bar
         self.status_label = tk.Label(tree_frame, text="Ready", anchor="w", relief=tk.SUNKEN)
         self.status_label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(5, 0))
+    
+    def _check_fullname_length(self, event=None):
+        """Check and enforce 25 character limit for FullName."""
+        current = self.fullName.get()
+        if len(current) > 25:
+            self.fullName.delete(25, tk.END)
+            self.update_status("⚠ FullName limited to 25 characters")
 
     def setup_keyboard_bindings(self):
         self.root.bind('<Escape>', lambda e: self.clear_selection())
@@ -322,6 +330,12 @@ class TaskApp:
         if missing:
             messagebox.showwarning("Validation Error", 
                                   f"Required fields missing:\n• " + "\n• ".join(missing))
+            return False
+        
+        # Check FullName length
+        if len(fields['FullName']) > 25:
+            messagebox.showwarning("Validation Error", 
+                                  "FullName must be 25 characters or less!")
             return False
 
         # Check numeric fields
@@ -679,9 +693,19 @@ class TaskApp:
                     messagebox.showinfo("Info", "No data to export!")
                     return
                 
-                df = pd.DataFrame(rows, columns=['FullName', 'Barcode', 'Price', 'PVN'])
+                # Format prices with exactly 2 decimal places and comma separator
+                formatted_rows = []
+                for row in rows:
+                    fullname, barcode, price, pvn = row
+                    # Format price with 2 decimals and comma separator
+                    price_formatted = f"{float(price):.2f}".replace('.', ',')
+                    # Format PVN consistently
+                    pvn_formatted = str(pvn).replace('.', ',')
+                    formatted_rows.append([fullname, barcode, price_formatted, pvn_formatted])
+                
+                df = pd.DataFrame(formatted_rows, columns=['FullName', 'Barcode', 'Price', 'PVN'])
                 csv_path = "./CSV/export.csv"
-                df.to_csv(csv_path, index=False)
+                df.to_csv(csv_path, index=False, encoding='utf-8-sig')
                 
                 self.update_status(f"Exported {len(rows)} records to {csv_path}")
                 messagebox.showinfo("Success", f"Data exported successfully to:\n{csv_path}")
