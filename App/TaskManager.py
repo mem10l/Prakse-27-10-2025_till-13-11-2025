@@ -56,6 +56,14 @@ class Database:
             conn.close()
     
     def _create_tables(self, cursor):
+        # Categories table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_name TEXT UNIQUE NOT NULL
+            )
+        ''')
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +74,9 @@ class Database:
                 DateCreated DATETIME DEFAULT CURRENT_TIMESTAMP,
                 InStock INTEGER,
                 pvn_id INTEGER,
-                FOREIGN KEY(pvn_id) REFERENCES PVN(id)
+                category_id INTEGER,
+                FOREIGN KEY(pvn_id) REFERENCES PVN(id),
+                FOREIGN KEY(category_id) REFERENCES categories(id)
             )
         ''')
         
@@ -75,6 +85,7 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id INTEGER,
                 barcode TEXT UNIQUE,
+                barcode_type INTEGER DEFAULT 0,
                 is_primary INTEGER DEFAULT 1,
                 FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
             )
@@ -86,6 +97,8 @@ class Database:
                 task_id INTEGER,
                 price DECIMAL(10, 2),
                 currency TEXT DEFAULT 'EUR',
+                price_type INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
                 FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
             )
         ''')
@@ -116,6 +129,9 @@ class TaskApp:
         # Load PVN values
         self.pvn_values = self._load_pvn_values()
         
+        # Load categories
+        self.load_categories()
+        
         # Track selected task and mode
         self.selected_id: Optional[int] = None
         self.edit_mode: bool = False
@@ -135,6 +151,31 @@ class TaskApp:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load PVN values: {e}")
             return ["0%", "5%", "12%", "21%"]
+    
+    def load_categories(self):
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, category_name FROM categories ORDER BY category_name")
+            rows = cursor.fetchall()
+            
+            self.category_ids = [row[0] for row in rows]
+            self.category_names = [row[1] for row in rows]
+    
+    def get_selected_category_id(self) -> Optional[int]:
+        try:
+            index = self.category_combo.current()
+            if index >= 0 and index < len(self.category_ids):
+                return self.category_ids[index]
+        except:
+            pass
+        return None
+    
+    def set_category_by_id(self, category_id: int):
+        try:
+            index = self.category_ids.index(category_id)
+            self.category_combo.current(index)
+        except (ValueError, AttributeError):
+            pass
 
     def create_widgets(self):
         self.root.grid_rowconfigure(0, weight=1)
@@ -158,29 +199,33 @@ class TaskApp:
         self.mode_button.pack(fill=tk.BOTH, expand=True, pady=(2, 0))
 
         # Labels with character counter for FullName
-        labels = ["FullName (max 25)", "ItemGroup", "InStock", "ItemSuplier", "PVN", "Price", "Barcode (Optional)"]
+        labels = ["FullName (max 25)", "Category", "InStock", "ItemSuplier", "PVN", "Price", "Barcode (Optional)", "Barcode Type"]
         for i, label in enumerate(labels):
             tk.Label(input_frame, text=label).grid(row=i+1, column=0, padx=5, pady=5, sticky="w")
 
         # Entry fields
         self.fullName = tk.Entry(input_frame, width=25)
         self.fullName.bind('<KeyRelease>', self._check_fullname_length)
-        self.itemGroup = tk.Entry(input_frame, width=25)
+        self.category_combo = ttk.Combobox(input_frame, values=self.category_names, width=23, state="readonly")
+        if self.category_names:
+            self.category_combo.current(0)
         self.inStock = tk.Entry(input_frame, width=25)
         self.itemSuplier = tk.Entry(input_frame, width=25)
         self.pvn = ttk.Combobox(input_frame, values=self.pvn_values, width=23)
         self.pvn.set("Select PVN")
         self.price = tk.Entry(input_frame, width=25)
         self.barcode = tk.Entry(input_frame, width=25)
+        self.barcode_type = ttk.Combobox(input_frame, values=["0 - EAN-13", "1 - UPC", "2 - Code128", "3 - QR"], width=23)
+        self.barcode_type.current(0)
 
-        entries = [self.fullName, self.itemGroup, self.inStock, self.itemSuplier, 
-                   self.pvn, self.price, self.barcode]
+        entries = [self.fullName, self.category_combo, self.inStock, self.itemSuplier, 
+                   self.pvn, self.price, self.barcode, self.barcode_type]
         for i, entry in enumerate(entries):
             entry.grid(row=i+1, column=1, padx=5, pady=5, sticky="w")
 
         # Buttons
         button_frame = tk.Frame(input_frame)
-        button_frame.grid(row=8, column=0, columnspan=2, pady=(15, 0))
+        button_frame.grid(row=9, column=0, columnspan=2, pady=(15, 0))
         
         # Main action button (changes based on mode)
         self.action_button = tk.Button(button_frame, text="Add Task", command=self.handle_action, 
@@ -288,8 +333,8 @@ class TaskApp:
         self.root.bind('<Control-m>', lambda e: self.toggle_mode())
         
         # Enter key navigation between fields
-        fields = [self.fullName, self.itemGroup, self.inStock, self.itemSuplier, 
-                  self.pvn, self.price, self.barcode]
+        fields = [self.fullName, self.category_combo, self.inStock, self.itemSuplier, 
+                  self.pvn, self.price, self.barcode, self.barcode_type]
         
         for i, field in enumerate(fields[:-1]):
             field.bind('<Return>', lambda e, next_field=fields[i+1]: next_field.focus())
@@ -300,11 +345,14 @@ class TaskApp:
         """Clear all selections and input fields."""
         self.tree.selection_remove(self.tree.selection())
         
-        for field in [self.fullName, self.itemGroup, self.inStock, self.itemSuplier, 
+        for field in [self.fullName, self.inStock, self.itemSuplier, 
                       self.price, self.barcode]:
             field.delete(0, tk.END)
         
         self.pvn.set("Select PVN")
+        if self.category_names:
+            self.category_combo.current(0)
+        self.barcode_type.current(0)
         self.selected_id = None
 
         if self.edit_mode:
@@ -345,11 +393,15 @@ class TaskApp:
         # Check required fields
         fields = {
             'FullName': self.fullName.get().strip(),
-            'ItemGroup': self.itemGroup.get().strip(),
             'InStock': self.inStock.get().strip(),
             'ItemSuplier': self.itemSuplier.get().strip(),
             'Price': self.price.get().strip()
         }
+        
+        # Check category selection
+        if self.get_selected_category_id() is None:
+            messagebox.showwarning("Validation Error", "Please select a category!")
+            return False
         
         missing = [name for name, value in fields.items() if not value]
         if missing:
@@ -404,13 +456,15 @@ class TaskApp:
     def add_task(self):
         try:
             title = self.fullName.get().strip()
-            description = self.itemGroup.get().strip()
+            category_id = self.get_selected_category_id()
             quantity = int(self.inStock.get().strip())
             suplier = self.itemSuplier.get().strip()
             price = float(self.price.get().strip())
             pvn = self.pvn.get().strip()
             barcode_input = self.barcode.get().strip()
             barcode = barcode_input if barcode_input else make_random_ean13()
+            barcode_type_str = self.barcode_type.get()
+            barcode_type = int(barcode_type_str.split(' - ')[0]) if barcode_type_str else 0
 
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
@@ -429,16 +483,20 @@ class TaskApp:
                               (price_id, pvn))
                 pvn_id = cursor.lastrowid
                 
+                # Get category name for ItemGroup (for backward compatibility)
+                cursor.execute("SELECT category_name FROM categories WHERE id = ?", (category_id,))
+                category_name = cursor.fetchone()[0]
+                
                 # Insert task
                 cursor.execute(
-                    "INSERT INTO tasks (id, FullName, ItemGroup, ItemSuplier, InStock, pvn_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (next_id, title, description, suplier, quantity, pvn_id)
+                    "INSERT INTO tasks (id, FullName, ItemGroup, ItemSuplier, InStock, pvn_id, category_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (next_id, title, category_name, suplier, quantity, pvn_id, category_id)
                 )
                 
                 # Insert barcode
-                cursor.execute("INSERT INTO barcode (task_id, barcode) VALUES (?, ?)",
-                              (next_id, barcode))
+                cursor.execute("INSERT INTO barcode (task_id, barcode, barcode_type) VALUES (?, ?, ?)",
+                              (next_id, barcode, barcode_type))
                 
                 conn.commit()
             
@@ -509,10 +567,26 @@ class TaskApp:
             self.update_mode_ui()
         
         try:
+            # Fetch full task details including category_id and barcode_type
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT t.category_id, b.barcode_type
+                    FROM tasks t
+                    LEFT JOIN barcode b ON t.id = b.task_id
+                    WHERE t.id = ?
+                """, (task_id,))
+                result = cursor.fetchone()
+                category_id = result[0] if result else None
+                barcode_type = result[1] if result and result[1] is not None else 0
+            
             self.fullName.delete(0, tk.END)
             self.fullName.insert(0, str(values[1]))
-            self.itemGroup.delete(0, tk.END)
-            self.itemGroup.insert(0, str(values[2]))
+            
+            # Set category by ID
+            if category_id:
+                self.set_category_by_id(category_id)
+            
             self.itemSuplier.delete(0, tk.END)
             self.itemSuplier.insert(0, str(values[3]))
             self.inStock.delete(0, tk.END)
@@ -522,6 +596,9 @@ class TaskApp:
             self.price.delete(0, tk.END)
             self.price.insert(0, str(values[8]))
             self.pvn.set(str(values[9]))
+            
+            # Set barcode type
+            self.barcode_type.current(barcode_type)
             
             self.update_status(f"Editing task ID: {task_id}")
                 
@@ -535,21 +612,27 @@ class TaskApp:
         try:
             task_id = self.selected_id
             title = self.fullName.get().strip()
-            description = self.itemGroup.get().strip()
+            category_id = self.get_selected_category_id()
             quantity = int(self.inStock.get().strip())
             suplier = self.itemSuplier.get().strip()
             price = float(self.price.get().strip())
             pvn = self.pvn.get().strip()
             barcode = self.barcode.get().strip()
+            barcode_type_str = self.barcode_type.get()
+            barcode_type = int(barcode_type_str.split(' - ')[0]) if barcode_type_str else 0
 
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 
+                # Get category name for ItemGroup
+                cursor.execute("SELECT category_name FROM categories WHERE id = ?", (category_id,))
+                category_name = cursor.fetchone()[0]
+                
                 # Update task
                 cursor.execute(
-                    "UPDATE tasks SET FullName = ?, ItemGroup = ?, ItemSuplier = ?, InStock = ? "
+                    "UPDATE tasks SET FullName = ?, ItemGroup = ?, ItemSuplier = ?, InStock = ?, category_id = ? "
                     "WHERE id = ?",
-                    (title, description, suplier, quantity, task_id)
+                    (title, category_name, suplier, quantity, category_id, task_id)
                 )
                 
                 # Update price
@@ -564,8 +647,8 @@ class TaskApp:
                 
                 # Update barcode if provided
                 if barcode:
-                    cursor.execute("UPDATE barcode SET barcode = ? WHERE task_id = ?", 
-                                  (barcode, task_id))
+                    cursor.execute("UPDATE barcode SET barcode = ?, barcode_type = ? WHERE task_id = ?", 
+                                  (barcode, barcode_type, task_id))
                 
                 conn.commit()
             
