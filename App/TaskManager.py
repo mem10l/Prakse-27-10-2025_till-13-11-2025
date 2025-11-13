@@ -7,6 +7,33 @@ import pandas as pd
 from typing import Optional, List, Tuple
 from contextlib import contextmanager
 
+def _ean13_check_digit(twelve_digits: str) -> str:
+    if len(twelve_digits) != 12 or not twelve_digits.isdigit():
+        raise ValueError("EAN-13 requires 12 digits to compute check digit")
+    s_odd = sum(int(d) for d in twelve_digits[::2])
+    s_even = sum(int(d) for d in twelve_digits[1::2])
+    total = s_odd + 3 * s_even
+    return str((10 - (total % 10)) % 10)
+
+def is_valid_ean13(code: str) -> bool:
+    if len(code) != 13 or not code.isdigit():
+        return False
+    return _ean13_check_digit(code[:12]) == code[12]
+
+def make_random_ean13() -> str:
+    base = f"{random.randint(0, 999999999999):012}"
+    return base + _ean13_check_digit(base)
+
+def normalize_barcode_for_export(code: str) -> str:
+    if code is None:
+        return ''
+    s = str(code).strip()
+    if not s:
+        return ''
+    if s.isdigit() and len(s) == 12:
+        return s + _ean13_check_digit(s)
+    return s
+
 class Database:
     
     def __init__(self, db_path: str = './Database/tasks.db'):
@@ -99,7 +126,6 @@ class TaskApp:
         self.load_tasks()
         
     def _load_pvn_values(self) -> List[str]:
-        """Load PVN values from CSV file."""
         try:
             df = pd.read_csv("./CSV/PVN.csv", header=None)
             return df.iloc[:, 0].dropna().astype(str).str.strip().tolist()
@@ -166,7 +192,7 @@ class TaskApp:
             ("Delete", self.delete_task, 1, 1, 12),
             ("Clear", self.clear_selection, 2, 0, 12),
             ("Refresh", self.load_tasks, 2, 1, 12),
-            ("Export CSV", self.export_to_csv, 3, 0, 25)
+            ("Export CHD 3050U", self.export_to_chd3050u, 3, 0, 25)
         ]
         
         for text, command, row, col, width in buttons:
@@ -248,11 +274,10 @@ class TaskApp:
         self.status_label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(5, 0))
     
     def _check_fullname_length(self, event=None):
-        """Check and enforce 25 character limit for FullName."""
         current = self.fullName.get()
         if len(current) > 25:
             self.fullName.delete(25, tk.END)
-            self.update_status("⚠ FullName limited to 25 characters")
+            self.update_status(" FullName limited to 25 characters")
 
     def setup_keyboard_bindings(self):
         self.root.bind('<Escape>', lambda e: self.clear_selection())
@@ -348,6 +373,12 @@ class TaskApp:
                                   f"Non-numeric values in:\n• " + "\n• ".join(invalid))
             return False
 
+        # Optional barcode: if provided, enforce EAN-13 validity
+        barcode_val = self.barcode.get().strip()
+        if barcode_val and not is_valid_ean13(barcode_val):
+            messagebox.showwarning("Validation Error", "Barcode must be a valid 13-digit EAN-13 (with correct check digit).")
+            return False
+
         # Check PVN selection
         if self.pvn.get() in ["Select PVN", ""] or self.pvn.get() not in self.pvn_values:
             messagebox.showwarning("Validation Error", "Please select a valid PVN!")
@@ -378,7 +409,8 @@ class TaskApp:
             suplier = self.itemSuplier.get().strip()
             price = float(self.price.get().strip())
             pvn = self.pvn.get().strip()
-            barcode = self.barcode.get().strip() or f"{random.randint(0, 9999999999999):013}"
+            barcode_input = self.barcode.get().strip()
+            barcode = barcode_input if barcode_input else make_random_ean13()
 
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
@@ -669,49 +701,45 @@ class TaskApp:
         """Update status bar message."""
         self.status_label.config(text=message)
     
-    def export_to_csv(self):
+
+    def export_to_chd3050u(self):
         try:
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
-
                 cursor.execute("""
                     SELECT 
+                        t.id,
                         t.FullName,
-                        b.barcode,
-                        p.price,
-                        pvn.pvn
+                        COALESCE(b.barcode, ''),
+                        COALESCE(p.price, 0),
+                        COALESCE(pvn.pvn, '')
                     FROM tasks t
                     LEFT JOIN barcode b ON t.id = b.task_id
                     LEFT JOIN price p ON t.id = p.task_id
                     LEFT JOIN PVN pvn ON t.pvn_id = pvn.id
-                    ORDER BY t.id DESC
+                    ORDER BY t.id ASC
                 """)
-                
                 rows = cursor.fetchall()
-                
                 if not rows:
                     messagebox.showinfo("Info", "No data to export!")
                     return
-                
-                # Format prices with exactly 2 decimal places and comma separator
-                formatted_rows = []
-                for row in rows:
-                    fullname, barcode, price, pvn = row
-                    # Format price with 2 decimals and comma separator
-                    price_formatted = f"{float(price):.2f}".replace('.', ',')
-                    # Format PVN consistently
-                    pvn_formatted = str(pvn).replace('.', ',')
-                    formatted_rows.append([fullname, barcode, price_formatted, pvn_formatted])
-                
-                df = pd.DataFrame(formatted_rows, columns=['FullName', 'Barcode', 'Price', 'PVN'])
-                csv_path = "./CSV/export.csv"
+
+                out_rows = []
+                for task_id, name, barcode, price, pvn in rows:
+                    name_capped = (name or "").strip()[:25]
+                    price_fmt = f"{float(price):.2f}".replace('.', ',')
+                    vat_val = str(pvn).strip()
+                    barcode_out = normalize_barcode_for_export(barcode)
+                    out_rows.append([task_id, name_capped, price_fmt, vat_val, barcode_out])
+
+                df = pd.DataFrame(out_rows, columns=["PLU", "NAME", "PRICE", "VAT", "BARCODE"])
+                os.makedirs("./CSV", exist_ok=True)
+                csv_path = "./CSV/chd3050u_plu.csv"
                 df.to_csv(csv_path, index=False, encoding='utf-8-sig')
-                
-                self.update_status(f"Exported {len(rows)} records to {csv_path}")
-                messagebox.showinfo("Success", f"Data exported successfully to:\n{csv_path}")
-                
+                self.update_status(f"Exported {len(out_rows)} records to {csv_path}")
+                messagebox.showinfo("Success", f"CHD 3050U export created at:\n{csv_path}\nConfirm column mapping with your CHD import tool.")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to export data: {e}")
+            messagebox.showerror("Error", f"Failed to export CHD 3050U CSV: {e}")
 
 
 if __name__ == "__main__":
